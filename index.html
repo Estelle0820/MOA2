@@ -301,7 +301,7 @@ const practiceTimeline = [
     type: jsPsychHtmlButtonResponse,
     stimulus: `<div class="wrap center">
       <h2>Practice</h2>
-      <p>!First, you will watch <strong>one practice clip</strong>, answer
+      <p>First, you will watch <strong>one practice clip</strong>, answer
       <strong>2 rating questions</strong>, and then <strong>4 practice memory questions</strong>
       to get familiar with the task.</p>
     </div>`,
@@ -347,11 +347,14 @@ practiceTimeline.push({
     }
     const shuffled = jsPsych.randomization.shuffle(trials);
 
+    // Take only first 3 for testing
+    shuffled = shuffled.slice(0, 3);
+    
     const mainTimeline = [{
       type: jsPsychHtmlButtonResponse,
       stimulus: `<div class="wrap center">
         <h2>Welcome</h2>
-        <p>You will watch 18 clips (6 scenes × 3 versions). After each clip, please answer all questions.</p>
+        <p>You will watch 18 clips. After each clip, please answer all questions.</p>
       </div>`,
       choices: ["Begin"]
     }];
