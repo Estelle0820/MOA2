@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>MOA2 Experiment</title>
+  <link rel="stylesheet" href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css" />
+  <style>
+    body { font-family: system-ui, sans-serif; background:#fafafa; }
+    .center { text-align: center; }
+    video { display: block; margin: 0 auto; border-radius: 10px; }
+    img { max-height: 200px; margin: 8px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+    .cell { text-align:center; }
+  </style>
+</head>
+<body></body>
+
+<script type="module">
+  import { initJsPsych } from "https://esm.sh/jspsych";
+  import jsPsychHtmlButtonResponse from "https://esm.sh/@jspsych/plugin-html-button-response";
+  import jsPsychHtmlSliderResponse from "https://esm.sh/@jspsych/plugin-html-slider-response";
+
+  const jsPsych = initJsPsych({
+    on_finish: () => jsPsych.data.displayData()
+  });
+
+  // --- Load CSV with questions
+  async function loadQuestions() {
+    const res = await fetch("logic.csv");
+    const text = await res.text();
+    const rows = text.trim().split("\n").map(r => r.split(","));
+    const headers = rows.shift();
+    return rows.map(r => Object.fromEntries(headers.map((h,i)=>[h.trim(), r[i]?.trim()])));
+  }
+
+  function videoTrial(stimulus) {
+    return {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `
+        <div class="center">
+          <p>Watch the clip carefully</p>
+          <video width="900" controls playsinline>
+            <source src="${stimulus}" type="video/mp4">
+          </video>
+        </div>
+      `,
+      choices: ["Continue"],
+      data: {phase:"video", stimulus}
+    }
+  }
+
+  function questionTrial(q) {
+    const options = ["a","b","c","d"]
+      .filter(o => q[`left_${o}`] || q[`right_${o}`]); // handle missing
+
+    const side = Math.random() < 0.5 ? "left" : "right"; // pick version
+    const html = `
+      <div class="center"><p><strong>${q.prompt.replace(/"/g,"")}</strong></p></div>
+      <div class="grid">
+        ${options.map((o,i) => `
+          <div class="cell">
+            ${q[`${side}_${o}`].endsWith(".png") 
+              ? `<img src="${q[`${side}_${o}`]}">`
+              : `<p>${q[`${side}_${o}`]}</p>`}
+            <br><button class="jspsych-btn" data-choice="${i}">${String.fromCharCode(65+i)}</button>
+          </div>
+        `).join("")}
+      </div>
+    `;
+    return {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: html,
+      choices: [], // buttons are custom
+      on_load: () => {
+        document.querySelectorAll("button[data-choice]").forEach(btn=>{
+          btn.onclick = () => jsPsych.finishTrial({
+            phase:"question",
+            qid: q.id,
+            chosen: btn.dataset.choice,
+            correct: q[`correct_${side}_index`]
+          });
+        });
+      }
+    }
+  }
+
+  // Build experiment
+  (async ()=>{
+    const questions = await loadQuestions();
+
+    let timeline = [];
+
+    // for now just demo with first 2 videos and 2 questions
+    timeline.push(videoTrial("videos/car_v1_LtoR_3s.mp4"));
+    timeline.push(questionTrial(questions[0]));
+
+    timeline.push(videoTrial("videos/dog_v1_RtoL_7s.mp4"));
+    timeline.push(questionTrial(questions[1]));
+
+    jsPsych.run(timeline);
+  })();
+
+</script>
+</html>
