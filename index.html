@@ -201,9 +201,10 @@
       : "";
 
     const prompt = (q.prompt || "")
-  .replace(/^"(.*)"$/,'$1')   // strip leading/trailing quotes
-  .replace(/’/g,"'")          // curly apostrophe → straight
-  .replace(/“|”/g,'"');       // curly quotes → straight quotes
+      .replace(/^"(.*)"$/,'$1')   // strip leading/trailing quotes
+      .normalize("NFKC")          // Unicode normalization
+      .replace(/[\u2018\u2019]/g, "'")  // curly apostrophes → straight '
+      .replace(/[\u201C\u201D]/g, '"'); // curly quotes → straight "
 
     return {
       type: jsPsychHtmlButtonResponse,
