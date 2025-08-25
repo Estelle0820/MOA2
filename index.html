@@ -16,6 +16,28 @@
     .stem  { display:block; margin: 8px auto 16px; max-width: 900px; width:100%; height:260px; object-fit:contain; }
     .optimg{ width:100%; max-width:360px; height:220px; object-fit:contain; display:block; margin:8px auto; background:#fff; }
     .opttext{ margin:10px 8px; }
+
+    /* Slider labels: 0–4 */
+    .jspsych-slider-container .jspsych-slider-labels {
+      display: flex !important;
+      justify-content: space-between !important;
+      gap: 0 !important;
+      margin-top: 10px !important;
+      font-size: 14px !important;
+      line-height: 1.2 !important;
+      color: #111 !important;
+      white-space: nowrap !important;
+    }
+    .jspsych-slider-container .jspsych-slider-label {
+      text-align: center !important;
+      flex: 0 0 auto !important;
+    }
+
+    /* Hide the video seek bar + time displays (leave play/pause) */
+    video::-webkit-media-controls-timeline,
+    video::-webkit-media-controls-current-time-display,
+    video::-webkit-media-controls-time-remaining-display { display: none !important; }
+    video::-moz-media-controls-seekbar { display: none !important; }
   </style>
 </head>
 <body></body>
@@ -26,6 +48,7 @@
 <script type="module">
   import { initJsPsych } from "https://esm.sh/jspsych";
   import jsPsychHtmlButtonResponse from "https://esm.sh/@jspsych/plugin-html-button-response";
+  import jsPsychHtmlSliderResponse from "https://esm.sh/@jspsych/plugin-html-slider-response";
 
   const jsPsych = initJsPsych({});
 
@@ -87,16 +110,23 @@
 
   // Flexible stem getter (accepts stemImage_left | left_stem | stem_left)
   function getStem(q, side){
-    const keys = [
-      `stemImage_${side}`,
-      `${side}_stem`,
-      `stem_${side}`
-    ];
+    const keys = [ `stemImage_${side}`, `${side}_stem`, `stem_${side}` ];
     for (const k of keys){
       const val = q[k];
       if (val && val.trim && val.trim().length) return val.trim();
     }
     return "";
+  }
+
+  // Keep playback rate fixed
+  function lockRate(video, rate){
+    const apply = () => { video.defaultPlaybackRate = rate; video.playbackRate = rate; };
+    const end = performance.now() + 2000;
+    (function tick(){ apply(); if (performance.now() < end) requestAnimationFrame(tick); })();
+    const reapply = () => apply();
+    ['play','ratechange','seeking','loadeddata','ended'].forEach(ev => {
+      video.addEventListener(ev, reapply);
+    });
   }
 
   function videoTrial(stimulus, meta){
@@ -105,12 +135,37 @@
       stimulus: `
         <div class="wrap center">
           <p><em>Watch the clip carefully. Click Continue after watching.</em></p>
-          <video width="900" controls playsinline preload="metadata">
-            <source src="${stimulus}" type="video/mp4">
+          <video id="trial-video" width="900" controls playsinline preload="metadata">
+            <source src="\${stimulus}" type="video/mp4">
           </video>
         </div>`,
       choices: ["Continue"],
-      data: { phase:"video", stimulus, ...meta }
+      data: { phase:"video", stimulus, ...meta },
+      on_load: () => {
+        const btn = document.querySelector(".jspsych-btn");
+        const v = document.getElementById("trial-video");
+
+        // Hide the Continue button until video ends
+        if (btn) btn.style.display = "none";
+        const showContinue = () => { if (btn) btn.style.display = ""; };
+
+        // Remove play/pause controls after first play, and prevent pausing
+        const firstPlay = () => {
+          v.removeAttribute('controls');
+          v.addEventListener('pause', () => { if (!v.ended) v.play().catch(()=>{}); });
+          v.removeEventListener('play', firstPlay);
+        };
+        v.addEventListener('play', firstPlay);
+
+        // Lock playback rate at 1.0
+        lockRate(v, 1.0);
+
+        // Reveal Continue when video ends
+        v.addEventListener('ended', () => { showContinue(); }, { once:true });
+
+        // Prevent right-click save
+        v.addEventListener('contextmenu', e => e.preventDefault());
+      }
     };
   }
 
@@ -174,6 +229,33 @@
     };
   }
 
+  // 2a) Preference: 0–4 with text only under 0,2,4
+  function prefSlider(t){
+    return {
+      type: jsPsychHtmlSliderResponse,
+      stimulus: '<div class="center"><p><strong>How much did you like the clip you just watched?</strong></p></div>',
+      min: 0, max: 4, step: 1, slider_start: 2,
+      slider_width: 700,
+      labels: ['0 (Not at all)','1','2 (Neutral)','3','4 (Very much)'],
+      require_movement: true,
+      data: { phase:"preference", ...t }
+    };
+  }
+
+  // 2b) Simultaneity: 0–4 with text under 0,2,4
+  function simultaneitySlider(t){
+    return {
+      type: jsPsychHtmlSliderResponse,
+      stimulus:
+        '<div class="center"><p><strong>To what extent did the visual and auditory motion begin at the same time?</strong></p></div>',
+      min: 0, max: 4, step: 1, slider_start: 2,
+      slider_width: 700,
+      labels: ['0 (Very far apart)','1','2 (Somewhat apart)','3','4 (Exactly the same time)'],
+      require_movement: true,
+      data: { phase:"simultaneity_slider", ...t }
+    };
+  }
+
   // ---------- design (sync/3s/7s + your counterbalance) ----------
   const SCENES   = ["dog","horse","penguin","plane","car","roomba"];
   const VERSIONS = [1,2,3];
@@ -195,9 +277,9 @@
 
     const rows = await loadCSV("logic.csv");
 
-    // ------- practice block: one video + four questions (practice_v1_q01..q04) -------
+    // ------- practice block: one video + four questions -------
     const practiceQs = questionsFor(rows, "practice", "v1")
-      .sort((a,b)=> Number(a.q) - Number(b.q)); // keep q01..q04 order
+      .sort((a,b)=> Number(a.q) - Number(b.q));
 
     const practiceTimeline = [];
     practiceTimeline.push({
@@ -255,8 +337,15 @@
 
     for (const t of shuffled){
       const side = (t.dir === "LtoR") ? "left" : "right";
+
+      // 1) Video (Continue appears only after end, controls removed after first play)
       mainTimeline.push( videoTrial(t.stimulus, t) );
 
+      // 2) Sliders
+      mainTimeline.push( prefSlider(t) );
+      mainTimeline.push( simultaneitySlider(t) );
+
+      // 3) Memory questions from CSV
       const allQs = questionsFor(rows, t.scene, t.version);
       if (allQs.length === 0){
         mainTimeline.push({
@@ -278,20 +367,20 @@
       choices: ['Finish']
     });
 
+    // ------ Google Sheet logging ------
     // Replace with your web app URL
-const SHEET_URL = "https://script.google.com/macros/s/AKfycbzvtPMbYspu9ViCg7v_5PftC27yxh4LU6b7s6BEIUPJ5i-i2ii9-ccrjAL7ViLvmGJUkg/exec";
+    const SHEET_URL = "https://script.google.com/macros/s/AKfycbzvtPMbYspu9ViCg7v_5PftC27yxh4LU6b7s6BEIUPJ5i-i2ii9-ccrjAL7ViLvmGJUkg/exec";
 
-jsPsych.on('finish', () => {
-  const data = jsPsych.data.get().values();
-  // send each row
-  data.forEach(row => {
-    fetch(SHEET_URL, {
-      method: "POST",
-      body: JSON.stringify(row),
-      headers: { "Content-Type": "application/json" }
-    }).catch(err => console.error("Error sending to sheet:", err));
-  });
-});
+    jsPsych.on('finish', () => {
+      const data = jsPsych.data.get().values();
+      data.forEach(row => {
+        fetch(SHEET_URL, {
+          method: "POST",
+          body: JSON.stringify(row),
+          headers: { "Content-Type": "application/json" }
+        }).catch(err => console.error("Error sending to sheet:", err));
+      });
+    });
 
     // ------- run full experiment -------
     jsPsych.run([
@@ -301,3 +390,4 @@ jsPsych.on('finish', () => {
   })();
 </script>
 </html>
+
