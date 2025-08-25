@@ -40,22 +40,44 @@
   function filename(scene, version, dir, moa){
     return `videos/${scene}_v${version}_${dir}_${moa}.mp4`;
   }
+
+  // Parse id like "penguin_v1_q01"
+  function parseId(id){
+    const m = (id || "").trim().match(/^([a-z0-9_-]+)_v([123])_q(\d+)$/i);
+    if(!m) return { scene:"", version:"", q:"" };
+    const scene = m[1].toLowerCase();
+    const version = `v${m[2]}`;
+    const q = m[3];
+    return { scene, version, q };
+  }
+
   async function loadCSV(path="logic.csv"){
-    return new Promise((resolve, reject) => {
-      Papa.parse(path, {
-        download: true, header: true, skipEmptyLines: true,
-        complete: r => resolve(r.data), error: reject
+    return new Promise((resolve, reject)=>{
+      Papa.parse(`${path}?cb=${Date.now()}`, {
+        download:true,
+        header:true,
+        skipEmptyLines:true,
+        complete: (res)=>{
+          const rows = res.data.map(r=>{
+            const obj = {};
+            for(const k in r) obj[k.trim()] = (r[k] ?? "").toString().trim();
+            const {scene, version, q} = parseId(obj.id || "");
+            obj.scene = scene;
+            obj.version = version;
+            obj.q = q;
+            return obj;
+          });
+          resolve(rows);
+        },
+        error: reject
       });
     });
   }
-  function questionsFor(questions, scene, version){
-    const s = scene.toLowerCase(); const v = `v${version}`.toLowerCase();
-    return questions.filter(q=>{
-      const qs = (q.scene || (q.id?.split("_")[0]) || "").toLowerCase();
-      let qv = (q.version || "").toLowerCase();
-      if(!qv && q.id){ const m = q.id.match(/_v(\d+)_/i); if(m) qv = `v${m[1]}`; }
-      return qs===s && qv===v;
-    });
+
+  function questionsFor(rows, scene, v){
+    const sceneKey = (scene||"").toLowerCase();
+    const versionKey = (String(v).startsWith("v") ? String(v) : `v${v}`);
+    return rows.filter(r => r.scene === sceneKey && r.version === versionKey);
   }
 
   function videoTrial(stimulus, meta){
@@ -133,26 +155,14 @@
     };
   }
 
-  // ---------- design (matches your table) ----------
-  // Scenes in the study:
-  const SCENES   = ["dog","horse","penguin","plane","car","submarine"]; // change to your 6
-  const VERSIONS = [1,2,3]; // A,B,C -> v1,v2,v3
+  // ---------- design (matches your counterbalance) ----------
+  const SCENES   = ["dog","horse","penguin","plane","car","submarine"];
+  const VERSIONS = [1,2,3];
 
-  // Three participant rotations = (MOA + Direction) per version
-  // Participant 1 rows (A: 0s L→R, B: 3s R→L, C: 7s L→R), etc.
   const ROTATIONS = [
-    { // Participant 1
-      moa:{1:"0s", 2:"3s", 3:"7s"},
-      dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"}
-    },
-    { // Participant 2
-      moa:{1:"3s", 2:"7s", 3:"0s"},
-      dir:{1:"RtoL", 2:"LtoR", 3:"RtoL"}
-    },
-    { // Participant 3
-      moa:{1:"7s", 2:"0s", 3:"3s"},
-      dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"}
-    }
+    { moa:{1:"0s", 2:"3s", 3:"7s"}, dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"} },
+    { moa:{1:"3s", 2:"7s", 3:"0s"}, dir:{1:"RtoL", 2:"LtoR", 3:"RtoL"} },
+    { moa:{1:"7s", 2:"0s", 3:"3s"}, dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"} }
   ];
 
   (async () => {
@@ -161,7 +171,6 @@
 
     const questions = await loadCSV("logic.csv");
 
-    // Build 18 trials using the chosen rotation
     const trials = [];
     for (const scene of SCENES){
       for (const v of VERSIONS){
@@ -172,11 +181,9 @@
       }
     }
 
-    // Randomize trial order
     const shuffled = jsPsych.randomization.shuffle(trials);
 
     const timeline = [];
-
     timeline.push({
       type: jsPsychHtmlButtonResponse,
       stimulus: `<div class="wrap center">
@@ -186,7 +193,6 @@
       choices: ["Begin"]
     });
 
-    // For each trial: video → all questions (for that scene+version)
     for (const t of shuffled){
       const side = (t.dir === "LtoR") ? "left" : "right";
       timeline.push( videoTrial(t.stimulus, t) );
@@ -200,7 +206,6 @@
           data: { phase:"no_questions", ...t }
         });
       } else {
-        // Show ALL questions (order randomized to avoid position bias)
         jsPsych.randomization.shuffle(allQs).forEach(q => {
           timeline.push( questionTrial(q, side, t) );
         });
@@ -217,4 +222,5 @@
   })();
 </script>
 </html>
+
 
