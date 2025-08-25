@@ -175,7 +175,7 @@
   }
 
   // ---------- design (sync/3s/7s + your counterbalance) ----------
-  const SCENES   = ["dog","horse","penguin","plane","car","submarine"];
+  const SCENES   = ["dog","horse","penguin","plane","car","roomba"];
   const VERSIONS = [1,2,3];
 
   // Use "sync" instead of "0s" in the rotation mapping
@@ -204,7 +204,7 @@
       type: jsPsychHtmlButtonResponse,
       stimulus: `<div class="wrap center">
         <h2>Practice</h2>
-        <p>First, you will watch one practice clip and answer 4 practice questions to get familiar with the task.</p>
+        <p>First, you will watch <strong>one practice clip</strong> and answer <strong>4 practice questions</strong> to get familiar with the task.</p>
       </div>`,
       choices: ["Begin Practice"]
     });
@@ -248,7 +248,7 @@
       type: jsPsychHtmlButtonResponse,
       stimulus: `<div class="wrap center">
         <h2>Welcome</h2>
-        <p>You will watch 18 clips. After each clip, please answer all questions.</p>
+        <p>You will watch 18 clips (6 scenes × 3 versions). After each clip, please answer all questions.</p>
       </div>`,
       choices: ["Begin"]
     });
@@ -286,3 +286,4 @@
   })();
 </script>
 </html>
+
