@@ -1,104 +1,220 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
+  <meta charset="utf-8" />
   <title>MOA2 Experiment</title>
   <link rel="stylesheet" href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css" />
   <style>
     body { font-family: system-ui, sans-serif; background:#fafafa; }
-    .center { text-align: center; }
-    video { display: block; margin: 0 auto; border-radius: 10px; }
-    img { max-height: 200px; margin: 8px; }
-    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
-    .cell { text-align:center; }
+    .wrap  { max-width: 980px; margin: 32px auto; }
+    .center { text-align:center; }
+    video  { display:block; margin: 0 auto; border-radius: 10px; background:#000; }
+    .grid  { display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-items:start; }
+    .cell  { text-align:center; padding:8px; background:#fff; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+    .stem  { display:block; margin: 8px auto 16px; max-width: 900px; max-height: 260px; }
+    .optimg{ max-height: 200px; width:auto; display:block; margin:8px auto; }
+    .opttext{ margin:10px 8px; }
   </style>
 </head>
 <body></body>
 
+<!-- CSV parser -->
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+
 <script type="module">
   import { initJsPsych } from "https://esm.sh/jspsych";
   import jsPsychHtmlButtonResponse from "https://esm.sh/@jspsych/plugin-html-button-response";
-  import jsPsychHtmlSliderResponse from "https://esm.sh/@jspsych/plugin-html-slider-response";
 
-  const jsPsych = initJsPsych({
-    on_finish: () => jsPsych.data.displayData()
-  });
+  const jsPsych = initJsPsych({ on_finish: () => jsPsych.data.displayData() });
 
-  // --- Load CSV with questions
-  async function loadQuestions() {
-    const res = await fetch("logic.csv");
-    const text = await res.text();
-    const rows = text.trim().split("\n").map(r => r.split(","));
-    const headers = rows.shift();
-    return rows.map(r => Object.fromEntries(headers.map((h,i)=>[h.trim(), r[i]?.trim()])));
+  // ---------- helpers ----------
+  function getParam(name){
+    const m = new URLSearchParams(location.search).get(name);
+    return m ? decodeURIComponent(m) : "";
+  }
+  function hash32(str){
+    let h = 2166136261 >>> 0;
+    for (let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function filename(scene, version, dir, moa){
+    return `videos/${scene}_v${version}_${dir}_${moa}.mp4`;
+  }
+  async function loadCSV(path="logic.csv"){
+    return new Promise((resolve, reject) => {
+      Papa.parse(path, {
+        download: true, header: true, skipEmptyLines: true,
+        complete: r => resolve(r.data), error: reject
+      });
+    });
+  }
+  function questionsFor(questions, scene, version){
+    const s = scene.toLowerCase(); const v = `v${version}`.toLowerCase();
+    return questions.filter(q=>{
+      const qs = (q.scene || (q.id?.split("_")[0]) || "").toLowerCase();
+      let qv = (q.version || "").toLowerCase();
+      if(!qv && q.id){ const m = q.id.match(/_v(\d+)_/i); if(m) qv = `v${m[1]}`; }
+      return qs===s && qv===v;
+    });
   }
 
-  function videoTrial(stimulus) {
+  function videoTrial(stimulus, meta){
     return {
       type: jsPsychHtmlButtonResponse,
       stimulus: `
-        <div class="center">
-          <p>Watch the clip carefully</p>
-          <video width="900" controls playsinline>
+        <div class="wrap center">
+          <p><em>Watch the clip carefully. Click Continue after watching.</em></p>
+          <video width="900" controls playsinline preload="metadata">
             <source src="${stimulus}" type="video/mp4">
           </video>
-        </div>
-      `,
+        </div>`,
       choices: ["Continue"],
-      data: {phase:"video", stimulus}
-    }
+      data: { phase:"video", stimulus, ...meta }
+    };
   }
 
-  function questionTrial(q) {
-    const options = ["a","b","c","d"]
-      .filter(o => q[`left_${o}`] || q[`right_${o}`]); // handle missing
+  function questionTrial(q, side, meta){
+    const stem = q[`stemImage_${side}`]?.trim?.() || "";
+    const opts = ["a","b","c","d"].map(k => q[`${side}_${k}`]?.trim?.() || "")
+                                  .filter(x => x.length>0);
+    const correctIndex = Number(q[`correct_${side}_index`]) || 0;
+    const label = i => String.fromCharCode(65+i);
 
-    const side = Math.random() < 0.5 ? "left" : "right"; // pick version
-    const html = `
-      <div class="center"><p><strong>${q.prompt.replace(/"/g,"")}</strong></p></div>
-      <div class="grid">
-        ${options.map((o,i) => `
-          <div class="cell">
-            ${q[`${side}_${o}`].endsWith(".png") 
-              ? `<img src="${q[`${side}_${o}`]}">`
-              : `<p>${q[`${side}_${o}`]}</p>`}
-            <br><button class="jspsych-btn" data-choice="${i}">${String.fromCharCode(65+i)}</button>
+    const optionsHTML = opts.map((val,i)=>{
+      const isImage = /\.(png|jpe?g|gif|webp)$/i.test(val);
+      const content = isImage ? `<img class="optimg" src="${val}" alt="opt ${label(i)}">`
+                              : `<div class="opttext">${val}</div>`;
+      return `
+        <div class="cell">
+          <div><strong>${label(i)}</strong></div>
+          ${content}
+          <div style="margin-top:8px">
+            <button class="jspsych-btn" data-choice="${i}">Choose ${label(i)}</button>
           </div>
-        `).join("")}
-      </div>
-    `;
+        </div>`;
+    }).join("");
+
+    const stemHTML = stem
+      ? (/\.(png|jpe?g|gif|webp)$/i.test(stem) ? `<img class="stem" src="${stem}">`
+                                               : `<div class="stem opttext">${stem}</div>`)
+      : "";
+
+    const prompt = (q.prompt || "").replace(/^"(.*)"$/,'$1');
+
     return {
       type: jsPsychHtmlButtonResponse,
-      stimulus: html,
-      choices: [], // buttons are custom
+      stimulus: `
+        <div class="wrap">
+          <div class="center" style="margin-bottom:8px">
+            <p><strong>${prompt}</strong></p>
+          </div>
+          ${stemHTML}
+          <div class="grid">${optionsHTML}</div>
+        </div>`,
+      choices: [],
       on_load: () => {
         document.querySelectorAll("button[data-choice]").forEach(btn=>{
-          btn.onclick = () => jsPsych.finishTrial({
-            phase:"question",
-            qid: q.id,
-            chosen: btn.dataset.choice,
-            correct: q[`correct_${side}_index`]
-          });
+          btn.onclick = () => {
+            const choice = Number(btn.dataset.choice);
+            jsPsych.finishTrial({
+              phase: "question",
+              qid: q.id || "",
+              scene: q.scene || "",
+              version: q.version || "",
+              side,
+              choice_index: choice,
+              correct_index: correctIndex,
+              is_correct: choice === correctIndex,
+              ...meta
+            });
+          };
+        });
+      }
+    };
+  }
+
+  // ---------- design (matches your table) ----------
+  // Scenes in the study:
+  const SCENES   = ["dog","horse","penguin","plane","car","submarine"]; // change to your 6
+  const VERSIONS = [1,2,3]; // A,B,C -> v1,v2,v3
+
+  // Three participant rotations = (MOA + Direction) per version
+  // Participant 1 rows (A: 0s L→R, B: 3s R→L, C: 7s L→R), etc.
+  const ROTATIONS = [
+    { // Participant 1
+      moa:{1:"0s", 2:"3s", 3:"7s"},
+      dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"}
+    },
+    { // Participant 2
+      moa:{1:"3s", 2:"7s", 3:"0s"},
+      dir:{1:"RtoL", 2:"LtoR", 3:"RtoL"}
+    },
+    { // Participant 3
+      moa:{1:"7s", 2:"0s", 3:"3s"},
+      dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"}
+    }
+  ];
+
+  (async () => {
+    const pid = getParam("pid") || "";
+    const rot = ROTATIONS[ pid ? (hash32(pid) % ROTATIONS.length) : Math.floor(Math.random()*ROTATIONS.length) ];
+
+    const questions = await loadCSV("logic.csv");
+
+    // Build 18 trials using the chosen rotation
+    const trials = [];
+    for (const scene of SCENES){
+      for (const v of VERSIONS){
+        const moa = rot.moa[v];
+        const dir = rot.dir[v];
+        const stim = filename(scene, v, dir, moa);
+        trials.push({ scene, version:v, dir, moa, stimulus: stim });
+      }
+    }
+
+    // Randomize trial order
+    const shuffled = jsPsych.randomization.shuffle(trials);
+
+    const timeline = [];
+
+    timeline.push({
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `<div class="wrap center">
+        <h2>Welcome</h2>
+        <p>You will watch 18 clips (6 scenes × 3 versions). After each clip, please answer all questions.</p>
+      </div>`,
+      choices: ["Begin"]
+    });
+
+    // For each trial: video → all questions (for that scene+version)
+    for (const t of shuffled){
+      const side = (t.dir === "LtoR") ? "left" : "right";
+      timeline.push( videoTrial(t.stimulus, t) );
+
+      const allQs = questionsFor(questions, t.scene, t.version);
+      if (allQs.length === 0){
+        timeline.push({
+          type: jsPsychHtmlButtonResponse,
+          stimulus: `<div class="wrap center"><p><em>No questions found for ${t.scene} v${t.version}.</em></p></div>`,
+          choices: ["Continue"],
+          data: { phase:"no_questions", ...t }
+        });
+      } else {
+        // Show ALL questions (order randomized to avoid position bias)
+        jsPsych.randomization.shuffle(allQs).forEach(q => {
+          timeline.push( questionTrial(q, side, t) );
         });
       }
     }
-  }
 
-  // Build experiment
-  (async ()=>{
-    const questions = await loadQuestions();
-
-    let timeline = [];
-
-    // for now just demo with first 2 videos and 2 questions
-    timeline.push(videoTrial("videos/car_v1_LtoR_3s.mp4"));
-    timeline.push(questionTrial(questions[0]));
-
-    timeline.push(videoTrial("videos/dog_v1_RtoL_7s.mp4"));
-    timeline.push(questionTrial(questions[1]));
+    timeline.push({
+      type: jsPsychHtmlButtonResponse,
+      stimulus: '<div class="center"><p>Thanks! You’re all set.</p></div>',
+      choices: ['Finish']
+    });
 
     jsPsych.run(timeline);
   })();
-
 </script>
 </html>
+
