@@ -371,7 +371,7 @@
     // Replace with your web app URL
     const SHEET_URL = "https://script.google.com/macros/s/AKfycbzvtPMbYspu9ViCg7v_5PftC27yxh4LU6b7s6BEIUPJ5i-i2ii9-ccrjAL7ViLvmGJUkg/exec";
 
-    jsPsych.on('finish', () => {
+    jsPsych.onFinish(() => {
       const data = jsPsych.data.get().values();
       data.forEach(row => {
         fetch(SHEET_URL, {
