@@ -80,6 +80,20 @@
     return rows.filter(r => r.scene === sceneKey && r.version === versionKey);
   }
 
+  // Flexible stem getter (accepts stemImage_left | left_stem | stem_left)
+  function getStem(q, side){
+    const keys = [
+      `stemImage_${side}`,
+      `${side}_stem`,
+      `stem_${side}`
+    ];
+    for (const k of keys){
+      const val = q[k];
+      if (val && val.trim && val.trim().length) return val.trim();
+    }
+    return "";
+  }
+
   function videoTrial(stimulus, meta){
     return {
       type: jsPsychHtmlButtonResponse,
@@ -96,7 +110,7 @@
   }
 
   function questionTrial(q, side, meta){
-    const stem = q[`stemImage_${side}`]?.trim?.() || "";
+    const stem = getStem(q, side);
     const opts = ["a","b","c","d"].map(k => q[`${side}_${k}`]?.trim?.() || "")
                                   .filter(x => x.length>0);
     const correctIndex = Number(q[`correct_${side}_index`]) || 0;
@@ -169,8 +183,49 @@
     const pid = getParam("pid") || "";
     const rot = ROTATIONS[ pid ? (hash32(pid) % ROTATIONS.length) : Math.floor(Math.random()*ROTATIONS.length) ];
 
-    const questions = await loadCSV("logic.csv");
+    // Practice config (override via URL if needed)
+    const PRACTICE_VIDEO = getParam("pvid") || "videos/practice_v1.mp4";
+    const PRACTICE_SIDE  = (getParam("pside") || "left").toLowerCase() === "right" ? "right" : "left";
 
+    const rows = await loadCSV("logic.csv");
+
+    // ------- build practice block (practice_v1_q01..q04) -------
+    const practiceQs = questionsFor(rows, "practice", "v1")
+      .sort((a,b)=> Number(a.q) - Number(b.q)); // keep q01..q04 order
+
+    const practiceTimeline = [];
+    practiceTimeline.push({
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `<div class="wrap center">
+        <h2>Practice</h2>
+        <p>First, you will watch <strong>one practice clip</strong> and answer <strong>4 practice questions</strong>. This is just to get familiar with the task.</p>
+      </div>`,
+      choices: ["Begin Practice"]
+    });
+    practiceTimeline.push( videoTrial(PRACTICE_VIDEO, { practice:true }) );
+
+    if (practiceQs.length === 0){
+      practiceTimeline.push({
+        type: jsPsychHtmlButtonResponse,
+        stimulus: `<div class="wrap center"><p><em>No practice questions found (scene "practice", version "v1").</em></p></div>`,
+        choices: ["Continue"],
+        data: { phase:"no_questions_practice" }
+      });
+    } else {
+      practiceQs.forEach(q => {
+        practiceTimeline.push( questionTrial(q, PRACTICE_SIDE, { practice:true }) );
+      });
+    }
+
+    practiceTimeline.push({
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `<div class="wrap center">
+        <p>Great! Practice is complete. The main task will now begin.</p>
+      </div>`,
+      choices: ["Start Main Task"]
+    });
+
+    // ------- build main trials -------
     const trials = [];
     for (const scene of SCENES){
       for (const v of VERSIONS){
@@ -180,11 +235,10 @@
         trials.push({ scene, version:v, dir, moa, stimulus: stim });
       }
     }
-
     const shuffled = jsPsych.randomization.shuffle(trials);
 
-    const timeline = [];
-    timeline.push({
+    const mainTimeline = [];
+    mainTimeline.push({
       type: jsPsychHtmlButtonResponse,
       stimulus: `<div class="wrap center">
         <h2>Welcome</h2>
@@ -195,11 +249,11 @@
 
     for (const t of shuffled){
       const side = (t.dir === "LtoR") ? "left" : "right";
-      timeline.push( videoTrial(t.stimulus, t) );
+      mainTimeline.push( videoTrial(t.stimulus, t) );
 
-      const allQs = questionsFor(questions, t.scene, t.version);
+      const allQs = questionsFor(rows, t.scene, t.version);
       if (allQs.length === 0){
-        timeline.push({
+        mainTimeline.push({
           type: jsPsychHtmlButtonResponse,
           stimulus: `<div class="wrap center"><p><em>No questions found for ${t.scene} v${t.version}.</em></p></div>`,
           choices: ["Continue"],
@@ -207,20 +261,23 @@
         });
       } else {
         jsPsych.randomization.shuffle(allQs).forEach(q => {
-          timeline.push( questionTrial(q, side, t) );
+          mainTimeline.push( questionTrial(q, side, t) );
         });
       }
     }
 
-    timeline.push({
+    mainTimeline.push({
       type: jsPsychHtmlButtonResponse,
       stimulus: '<div class="center"><p>Thanks! You’re all set.</p></div>',
       choices: ['Finish']
     });
 
-    jsPsych.run(timeline);
+    // ------- run full experiment -------
+    jsPsych.run([
+      ...practiceTimeline,
+      ...mainTimeline
+    ]);
   })();
 </script>
 </html>
-
 
