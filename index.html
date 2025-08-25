@@ -200,7 +200,10 @@
                                                : `<div class="stem opttext">${stem}</div>`)
       : "";
 
-    const prompt = (q.prompt || "").replace(/^"(.*)"$/,'$1');
+    const prompt = (q.prompt || "")
+  .replace(/^"(.*)"$/,'$1')   // strip leading/trailing quotes
+  .replace(/’/g,"'")          // curly apostrophe → straight
+  .replace(/“|”/g,'"');       // curly quotes → straight quotes
 
     return {
       type: jsPsychHtmlButtonResponse,
@@ -276,34 +279,47 @@
 
     const rows = await loadCSV("logic.csv");
 
-    // Practice
-    const practiceQs = questionsFor(rows, "practice", "v1").sort((a,b)=> Number(a.q) - Number(b.q));
-    const practiceTimeline = [
-      {
-        type: jsPsychHtmlButtonResponse,
-        stimulus: `<div class="wrap center">
-          <h2>Practice</h2>
-          <p>First, you will watch <strong>one practice clip</strong> and answer <strong>4 practice questions</strong> to get familiar with the task.</p>
-        </div>`,
-        choices: ["Begin Practice"]
-      },
-      videoTrial(PRACTICE_VIDEO, { practice:true })
-    ];
-    if (practiceQs.length === 0){
-      practiceTimeline.push({
-        type: jsPsychHtmlButtonResponse,
-        stimulus: `<div class="wrap center"><p><em>No practice questions found (scene "practice", version "v1").</em></p></div>`,
-        choices: ["Continue"],
-        data: { phase:"no_questions_practice" }
-      });
-    } else {
-      practiceQs.forEach(q => practiceTimeline.push( questionTrial(q, PRACTICE_SIDE, { practice:true }) ));
-    }
-    practiceTimeline.push({
-      type: jsPsychHtmlButtonResponse,
-      stimulus: `<div class="wrap center"><p>Great! Practice is complete. The main task will now begin.</p></div>`,
-      choices: ["Start Main Task"]
-    });
+ // Practice
+const practiceQs = questionsFor(rows, "practice", "v1").sort((a,b)=> Number(a.q) - Number(b.q));
+
+const practiceTimeline = [
+  {
+    type: jsPsychHtmlButtonResponse,
+    stimulus: `<div class="wrap center">
+      <h2>Practice</h2>
+      <p>First, you will watch <strong>one practice clip</strong>, answer
+      <strong>2 rating questions</strong>, and then <strong>4 practice memory questions</strong>
+      to get familiar with the task.</p>
+    </div>`,
+    choices: ["Begin Practice"]
+  },
+
+  // Practice video
+  videoTrial(PRACTICE_VIDEO, { practice:true }),
+
+  // ✅ Add rating sliders here
+  prefSlider({ practice:true }),
+  simultaneitySlider({ practice:true })
+];
+
+if (practiceQs.length === 0){
+  practiceTimeline.push({
+    type: jsPsychHtmlButtonResponse,
+    stimulus: `<div class="wrap center"><p><em>No practice questions found (scene "practice", version "v1").</em></p></div>`,
+    choices: ["Continue"],
+    data: { phase:"no_questions_practice" }
+  });
+} else {
+  practiceQs.forEach(q => {
+    practiceTimeline.push( questionTrial(q, PRACTICE_SIDE, { practice:true }) );
+  });
+}
+
+practiceTimeline.push({
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `<div class="wrap center"><p>Great! Practice is complete. The main task will now begin.</p></div>`,
+  choices: ["Start Main Task"]
+});
 
     // Main trials
     const trials = [];
