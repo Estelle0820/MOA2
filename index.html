@@ -64,7 +64,7 @@
 
       try {
         // Apps Script is most reliable with no-cors
-        await fetch(GS_WEBAPP_URL, {
+        await fetch(SHEET_URL, {
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
@@ -187,69 +187,84 @@
     };
   }
 
-  function questionTrial(q, side, meta){
-    const stem = getStem(q, side);
-    const opts = ["a","b","c","d"].map(k => q[`${side}_${k}`]?.trim?.() || "")
-                                  .filter(x => x.length>0);
-    const correctIndex = Number(q[`correct_${side}_index`]) || 0;
-    const label = i => String.fromCharCode(65+i);
+function questionTrial(q, side, meta){
+  const stem = getStem(q, side);
 
-    const optionsHTML = opts.map((val,i)=>{
-      const isImage = /\.(png|jpe?g|gif|webp)$/i.test(val);
-      const content = isImage ? `<img class="optimg" src="${val}" alt="opt ${label(i)}">`
-                              : `<div class="opttext">${val}</div>`;
-      return `
-        <div class="cell">
-          <div><strong>${label(i)}</strong></div>
-          ${content}
-          <div style="margin-top:8px">
-            <button class="jspsych-btn" data-choice="${i}">Choose ${label(i)}</button>
-          </div>
-        </div>`;
-    }).join("");
+  // Build option objects with original indices
+  const raw = ["a","b","c","d"]
+    .map((k,i) => ({ val: (q[`${side}_${k}`]||"").trim(), origIndex: i }))
+    .filter(o => o.val.length > 0);
 
-    const stemHTML = stem
-      ? (/\.(png|jpe?g|gif|webp)$/i.test(stem) ? `<img class="stem" src="${stem}">`
-                                               : `<div class="stem opttext">${stem}</div>`)
-      : "";
+  // The correct index as authored (0..3)
+  const authoredCorrect = Number(q[`correct_${side}_index`]) || 0;
 
-    const prompt = (q.prompt || "")
-      .replace(/^"(.*)"$/,'$1')   // strip leading/trailing quotes
-      .normalize("NFKC")          // Unicode normalization
-      .replace(/[\u2018\u2019]/g, "'")  // curly apostrophes → straight '
-      .replace(/[\u201C\u201D]/g, '"'); // curly quotes → straight "
+  // Shuffle the options
+  const opts = jsPsych.randomization.shuffle(raw);
 
-    return {
-      type: jsPsychHtmlButtonResponse,
-      stimulus: `
-        <div class="wrap">
-          <div class="center" style="margin-bottom:8px">
-            <p><strong>${prompt}</strong></p>
-          </div>
-          ${stemHTML}
-          <div class="grid">${optionsHTML}</div>
-        </div>`,
-      choices: [],
-      on_load: () => {
-        document.querySelectorAll("button[data-choice]").forEach(btn=>{
-          btn.onclick = () => {
-            const choice = Number(btn.dataset.choice);
-            jsPsych.finishTrial({
-              phase: "question",
-              qid: q.id || "",
-              scene: q.scene || "",
-              version: q.version || "",
-              side,
-              choice_index: choice,
-              correct_index: correctIndex,
-              is_correct: choice === correctIndex,
-              ...meta
-            });
-          };
-        });
-      }
-    };
-  }
+  // Where did the original correct option end up?
+  const correctIndex = opts.findIndex(o => o.origIndex === authoredCorrect);
+
+  const label = i => String.fromCharCode(65+i); // A,B,C,D
+
+  const optionsHTML = opts.map((o,i)=>{
+    const isImage = /\.(png|jpe?g|gif|webp)$/i.test(o.val);
+    const content = isImage
+      ? `<img class="optimg" src="${o.val}" alt="opt ${label(i)}">`
+      : `<div class="opttext">${o.val}</div>`;
+    return `
+      <div class="cell">
+        <div><strong>${label(i)}</strong></div>
+        ${content}
+        <div style="margin-top:8px">
+          <button class="jspsych-btn" data-choice="${i}">Choose ${label(i)}</button>
+        </div>
+      </div>`;
+  }).join("");
+
+  const stemHTML = stem
+    ? (/\.(png|jpe?g|gif|webp)$/i.test(stem) ? `<img class="stem" src="${stem}">`
+                                             : `<div class="stem opttext">${stem}</div>`)
+    : "";
+
+  const prompt = (q.prompt || "")
+    .replace(/^"(.*)"$/,'$1')
+    .normalize("NFKC")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"');
+
+  return {
+    type: jsPsychHtmlButtonResponse,
+    stimulus: `
+      <div class="wrap">
+        <div class="center" style="margin-bottom:8px">
+          <p><strong>${prompt}</strong></p>
+        </div>
+        ${stemHTML}
+        <div class="grid">${optionsHTML}</div>
+      </div>`,
+    choices: [],
+    on_load: () => {
+      document.querySelectorAll("button[data-choice]").forEach(btn=>{
+        btn.onclick = () => {
+          const choice = Number(btn.dataset.choice);
+          jsPsych.finishTrial({
+            phase: "question",
+            qid: q.id || "",
+            scene: q.scene || "",
+            version: q.version || "",
+            side,
+            // store both the new order and which was correct
+            option_order: opts.map(o => o.origIndex).join(','), // e.g., "2,0,1,3"
+            choice_index: choice,
+            correct_index: correctIndex,
+            is_correct: choice === correctIndex,
+            ...meta
+          });
+        };
+      });
+    }
+  };
+}
 
   function prefSlider(t){
     return {
