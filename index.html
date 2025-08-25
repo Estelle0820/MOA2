@@ -345,11 +345,8 @@ practiceTimeline.push({
         trials.push({ scene, version:v, dir, moa, stimulus: stim });
       }
     }
-    const shuffled = jsPsych.randomization.shuffle(trials);
+    const shuffled = jsPsych.randomization.shuffle(trials).slice(0, 3);
 
-    // Take only first 3 for testing
-    shuffled = shuffled.slice(0, 3);
-    
     const mainTimeline = [{
       type: jsPsychHtmlButtonResponse,
       stimulus: `<div class="wrap center">
