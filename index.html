@@ -288,7 +288,7 @@ const practiceTimeline = [
     type: jsPsychHtmlButtonResponse,
     stimulus: `<div class="wrap center">
       <h2>Practice</h2>
-      <p>!TESTFirst, you will watch <strong>one practice clip</strong>, answer
+      <p>!First, you will watch <strong>one practice clip</strong>, answer
       <strong>2 rating questions</strong>, and then <strong>4 practice memory questions</strong>
       to get familiar with the task.</p>
     </div>`,
@@ -298,7 +298,7 @@ const practiceTimeline = [
   // Practice video
   videoTrial(PRACTICE_VIDEO, { practice:true }),
 
-  // ✅ Add rating sliders here
+  // Eating sliders
   prefSlider({ practice:true }),
   simultaneitySlider({ practice:true })
 ];
@@ -332,7 +332,7 @@ practiceTimeline.push({
         trials.push({ scene, version:v, dir, moa, stimulus: stim });
       }
     }
-    const shuffled = jsPsych.randomization.shuffle(trials).slice(0,1);
+    const shuffled = jsPsych.randomization.shuffle(trials);
 
     const mainTimeline = [{
       type: jsPsychHtmlButtonResponse,
