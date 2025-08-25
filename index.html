@@ -10,9 +10,11 @@
     .center { text-align:center; }
     video  { display:block; margin: 0 auto; border-radius: 10px; background:#000; }
     .grid  { display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-items:start; }
-    .cell  { text-align:center; padding:8px; background:#fff; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
-    .stem  { display:block; margin: 8px auto 16px; max-width: 900px; max-height: 260px; }
-    .optimg{ max-height: 200px; width:auto; display:block; margin:8px auto; }
+    .cell  { display:flex; flex-direction:column; align-items:center; text-align:center; padding:8px; background:#fff; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
+
+    /* Uniform stems and option images (same display box, no distortion) */
+    .stem  { display:block; margin: 8px auto 16px; max-width: 900px; width:100%; height:260px; object-fit:contain; }
+    .optimg{ width:100%; max-width:360px; height:220px; object-fit:contain; display:block; margin:8px auto; background:#fff; }
     .opttext{ margin:10px 8px; }
   </style>
 </head>
@@ -37,8 +39,11 @@
     for (let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
     return h >>> 0;
   }
+
+  // Build filenames using sync/3s/7s (normalize any "0s" to "sync")
   function filename(scene, version, dir, moa){
-    return `videos/${scene}_v${version}_${dir}_${moa}.mp4`;
+    const moaTag = (moa === "0s") ? "sync" : moa;
+    return `videos/${scene}_v${version}_${dir}_${moaTag}.mp4`;
   }
 
   // Parse id like "penguin_v1_q01"
@@ -169,14 +174,15 @@
     };
   }
 
-  // ---------- design (matches your counterbalance) ----------
+  // ---------- design (sync/3s/7s + your counterbalance) ----------
   const SCENES   = ["dog","horse","penguin","plane","car","submarine"];
   const VERSIONS = [1,2,3];
 
+  // Use "sync" instead of "0s" in the rotation mapping
   const ROTATIONS = [
-    { moa:{1:"0s", 2:"3s", 3:"7s"}, dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"} },
-    { moa:{1:"3s", 2:"7s", 3:"0s"}, dir:{1:"RtoL", 2:"LtoR", 3:"RtoL"} },
-    { moa:{1:"7s", 2:"0s", 3:"3s"}, dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"} }
+    { moa:{1:"sync", 2:"3s", 3:"7s"}, dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"} },
+    { moa:{1:"3s", 2:"7s", 3:"sync"}, dir:{1:"RtoL", 2:"LtoR", 3:"RtoL"} },
+    { moa:{1:"7s", 2:"sync", 3:"3s"}, dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"} }
   ];
 
   (async () => {
@@ -189,7 +195,7 @@
 
     const rows = await loadCSV("logic.csv");
 
-    // ------- build practice block (practice_v1_q01..q04) -------
+    // ------- practice block: one video + four questions (practice_v1_q01..q04) -------
     const practiceQs = questionsFor(rows, "practice", "v1")
       .sort((a,b)=> Number(a.q) - Number(b.q)); // keep q01..q04 order
 
@@ -198,7 +204,7 @@
       type: jsPsychHtmlButtonResponse,
       stimulus: `<div class="wrap center">
         <h2>Practice</h2>
-        <p>First, you will watch <strong>one practice clip</strong> and answer <strong>4 practice questions</strong>. This is just to get familiar with the task.</p>
+        <p>First, you will watch one practice clip and answer 4 practice questions to get familiar with the task.</p>
       </div>`,
       choices: ["Begin Practice"]
     });
@@ -225,7 +231,7 @@
       choices: ["Start Main Task"]
     });
 
-    // ------- build main trials -------
+    // ------- main trials -------
     const trials = [];
     for (const scene of SCENES){
       for (const v of VERSIONS){
@@ -242,7 +248,7 @@
       type: jsPsychHtmlButtonResponse,
       stimulus: `<div class="wrap center">
         <h2>Welcome</h2>
-        <p>You will watch 18 clips (6 scenes × 3 versions). After each clip, please answer all questions.</p>
+        <p>You will watch 18 clips. After each clip, please answer all questions.</p>
       </div>`,
       choices: ["Begin"]
     });
@@ -280,4 +286,3 @@
   })();
 </script>
 </html>
-
