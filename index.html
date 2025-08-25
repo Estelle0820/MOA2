@@ -360,7 +360,7 @@ practiceTimeline.push({
         trials.push({ scene, version:v, dir, moa, stimulus: stim });
       }
     }
-    const shuffled = jsPsych.randomization.shuffle(trials).slice(0, 3);
+    const shuffled = jsPsych.randomization.shuffle(trials);
 
     const mainTimeline = [{
       type: jsPsychHtmlButtonResponse,
