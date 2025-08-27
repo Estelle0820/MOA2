@@ -3,19 +3,33 @@
 <head>
   <meta charset="utf-8" />
   <title>MOA2 Experiment</title>
-  <link rel="stylesheet" href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css" />
-  <style>
-    body { font-family: system-ui, sans-serif; background:#fafafa; }
-    .wrap  { max-width: 980px; margin: 32px auto; }
-    .center { text-align:center; }
-    video  { display:block; margin: 0 auto; border-radius: 10px; background:#000; }
-    .grid  { display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-items:start; }
-    .cell  { display:flex; flex-direction:column; align-items:center; text-align:center; padding:8px; background:#fff; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,.06); }
 
-    /* Uniform stems and option images */
-    .stem  { display:block; margin: 8px auto 16px; max-width: 900px; width:100%; height:260px; object-fit:contain; }
-    .optimg{ width:100%; max-width:360px; height:220px; object-fit:contain; display:block; margin:8px auto; background:#fff; }
-    .opttext{ margin:10px 8px; }
+  <!-- jsPsych CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css" />
+
+  <style>
+    /* Layout & base */
+    .jspsych-content-wrapper { display: flex; justify-content: center; }
+    .jspsych-content { max-width: 960px !important; margin: 40px auto !important; }
+    body { font-family: system-ui, sans-serif; background: #fafafa; }
+
+    /* Utilities */
+    .center { text-align: center; }
+    h2.center, h3.center { text-align: center; }
+
+    /* Lists default to left-aligned */
+    ol, ul { text-align: left; margin-left: 1.5em; }
+
+    /* Media & grid */
+    video { display: block; margin: 0 auto; border-radius: 10px; background: #000; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+    .cell { text-align: center; }
+    .tag { font-weight: 700; margin: 6px 0 8px; }
+
+    /* Question stem & options */
+    .stem  { display: block; margin: 8px auto 16px; max-width: 900px; width: 100%; height: 260px; object-fit: contain; }
+    .optimg{ width: 100%; max-width: 360px; height: 220px; object-fit: contain; display: block; margin: 8px auto; background: #fff; }
+    .opttext{ margin: 10px 8px; }
 
     /* Slider labels: 0–4 */
     .jspsych-slider-container .jspsych-slider-labels {
@@ -46,116 +60,144 @@
 <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
 
 <script type="module">
-  import { initJsPsych } from "https://esm.sh/jspsych";
-  import jsPsychHtmlButtonResponse from "https://esm.sh/@jspsych/plugin-html-button-response";
-  import jsPsychHtmlSliderResponse from "https://esm.sh/@jspsych/plugin-html-slider-response";
+  /* ==============================
+     Boot & imports
+  ============================== */
+  // Show JS errors on the page (handy in prod testing)
+  window.onerror = (m, s, l, c, e) => {
+    document.body.innerHTML = "<pre style='white-space:pre-wrap'>" + m + "\n" + (e && e.stack || "") + "</pre>";
+  };
 
-  // ------ Data Store ------
+  // ESM imports
+  import { initJsPsych } from "https://esm.sh/jspsych";
+  import jsPsychHtmlSliderResponse from "https://esm.sh/@jspsych/plugin-html-slider-response";
+  import jsPsychHtmlButtonResponse from "https://esm.sh/@jspsych/plugin-html-button-response";
+  import jsPsychSurveyText from "https://esm.sh/@jspsych/plugin-survey-text";
+
+  /* ==============================
+     Data Store
+  ============================== */
   const SHEET_URL = "https://script.google.com/macros/s/AKfycbz-5GhXQzK2N9ld_orabc1mwXOdhS_HSSOt00eMoNfWIqPtfK3X_pX-pkTxDS80PGXjCA/exec";
 
-   const jsPsych = initJsPsych({
+  const jsPsych = initJsPsych({
     on_finish: async () => {
-      // Build payload for Google Sheets
       const payload = {
         timestamp: new Date().toISOString(),
-        participant: getParam('pid') || '',  
-        data: jsPsych.data.get().values()       // array of trial objects
+        participant: getParam("pid") || "",
+        data: jsPsych.data.get().values()
       };
-
       try {
-        // Apps Script is most reliable with no-cors
         await fetch(SHEET_URL, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
           keepalive: true
         });
-        alert('Thanks! Your data was uploaded to Google Sheets.');
+        alert("Thanks! Your data was uploaded to Google Sheets.");
       } catch (e) {
         console.error(e);
-        // Fallback: download CSV locally if upload fails
-        jsPsych.data.get().localSave('csv','single_trial_demo.csv');
-        alert('Upload failed — CSV downloaded locally instead.');
+        jsPsych.data.get().localSave("csv", "single_trial_demo.csv");
+        alert("Upload failed — CSV downloaded locally instead.");
       }
     }
   });
 
-  // ---------- helpers ----------
-  function getParam(name){
+  /* ==============================
+     Helpers
+  ============================== */
+  function getParam(name) {
     const m = new URLSearchParams(location.search).get(name);
     return m ? decodeURIComponent(m) : "";
   }
-  function hash32(str){
-    let h = 2166136261 >>> 0;
-    for (let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
-    return h >>> 0;
-  }
 
-  function filename(scene, version, dir, moa){
+  // Build filename; maps "0s" -> "sync" if that's how files are named.
+  function filename(scene, version, dir, moa) {
+    const v = String(version).startsWith("v") ? String(version) : `v${version}`;
     const moaTag = (moa === "0s") ? "sync" : moa;
-    return `videos/${scene}_v${version}_${dir}_${moaTag}.mp4`;
+    return `videos/${scene}_${v}_${dir}_${moaTag}.mp4`;
   }
 
-  function parseId(id){
+  // Parse id like "penguin_v2_q14" -> { scene:"penguin", version:"v2", q:"14" }
+  function parseId(id) {
     const m = (id || "").trim().match(/^([a-z0-9_-]+)_v([123])_q(\d+)$/i);
-    if(!m) return { scene:"", version:"", q:"" };
+    if (!m) return { scene: "", version: "", q: "" };
     const scene = m[1].toLowerCase();
     const version = `v${m[2]}`;
     const q = m[3];
     return { scene, version, q };
   }
 
-  async function loadCSV(path="logic.csv"){
-    return new Promise((resolve, reject)=>{
+  async function loadCSV(path = "logic.csv") {
+    return new Promise((resolve, reject) => {
+      if (typeof Papa === "undefined") {
+        reject(new Error("Papa Parse not loaded. Make sure the <script> tag is included before this module."));
+        return;
+      }
       Papa.parse(`${path}?cb=${Date.now()}`, {
-        download:true,
-        header:true,
-        skipEmptyLines:true,
-        complete: (res)=>{
-          const rows = res.data.map(r=>{
-            const obj = {};
-            for(const k in r) obj[k.trim()] = (r[k] ?? "").toString().trim();
-            const {scene, version, q} = parseId(obj.id || "");
-            obj.scene = scene;
-            obj.version = version;
-            obj.q = q;
-            return obj;
-          });
-          resolve(rows);
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: (res) => {
+          try {
+            const rows = res.data.map(r => {
+              // normalize keys and values
+              const obj = {};
+              for (const k in r) obj[k.trim()] = (r[k] ?? "").toString().trim();
+
+              // enrich with scene/version/q from id (if provided)
+              const parsed = parseId(obj.id || "");
+              if (!obj.scene)   obj.scene   = parsed.scene;
+              if (!obj.version) obj.version = parsed.version;
+              if (!obj.q)       obj.q       = parsed.q;
+
+              // canonicalize
+              obj.scene = (obj.scene || "").toLowerCase();
+              if (obj.version && !String(obj.version).startsWith("v")) {
+                obj.version = `v${obj.version}`;
+              }
+              return obj;
+            });
+            resolve(rows);
+          } catch (err) {
+            reject(err);
+          }
         },
         error: reject
       });
     });
   }
 
-  function questionsFor(rows, scene, v){
-    const sceneKey = (scene||"").toLowerCase();
-    const versionKey = (String(v).startsWith("v") ? String(v) : `v${v}`);
-    return rows.filter(r => r.scene === sceneKey && r.version === versionKey);
+  function questionsFor(rows, scene, v) {
+    const sceneKey = (scene || "").toLowerCase();
+    const versionKey = String(v).startsWith("v") ? String(v) : `v${v}`;
+    return rows.filter(r => (r.scene === sceneKey) && (r.version === versionKey));
   }
 
-  function getStem(q, side){
+  function getStem(q, side) {
     const keys = [ `stemImage_${side}`, `${side}_stem`, `stem_${side}` ];
-    for (const k of keys){
+    for (const k of keys) {
       const val = q[k];
-      if (val && val.trim && val.trim().length) return val.trim();
+      if (val && typeof val === "string" && val.trim().length) return val.trim();
     }
     return "";
   }
 
-  // lock playback rate
-  function lockRate(video, rate){
+  // Lock playback rate (resilient to user changes)
+  function lockRate(video, rate) {
     const apply = () => { video.defaultPlaybackRate = rate; video.playbackRate = rate; };
     const end = performance.now() + 2000;
     (function tick(){ apply(); if (performance.now() < end) requestAnimationFrame(tick); })();
     const reapply = () => apply();
-    ['play','ratechange','seeking','loadeddata','ended'].forEach(ev => {
+    ["play","ratechange","seeking","loadeddata","ended"].forEach(ev => {
       video.addEventListener(ev, reapply);
     });
   }
 
-  function videoTrial(stimulus, meta){
+  /* ==============================
+     Trial builders
+  ============================== */
+  function videoTrial(stimulus, meta) {
     return {
       type: jsPsychHtmlButtonResponse,
       stimulus: `
@@ -166,7 +208,7 @@
           </video>
         </div>`,
       choices: ["Continue"],
-      data: { phase:"video", stimulus, ...meta },
+      data: { phase: "video", stimulus, ...meta },
       on_load: () => {
         const btn = document.querySelector(".jspsych-btn");
         const v = document.getElementById("trial-video");
@@ -174,99 +216,98 @@
         const showContinue = () => { if (btn) btn.style.display = ""; };
 
         const firstPlay = () => {
-          v.removeAttribute('controls');
-          v.addEventListener('pause', () => { if (!v.ended) v.play().catch(()=>{}); });
-          v.removeEventListener('play', firstPlay);
+          v.removeAttribute("controls");
+          v.addEventListener("pause", () => { if (!v.ended) v.play().catch(()=>{}); });
+          v.removeEventListener("play", firstPlay);
         };
-        v.addEventListener('play', firstPlay);
+        v.addEventListener("play", firstPlay);
 
         lockRate(v, 1.0);
-        v.addEventListener('ended', () => { showContinue(); }, { once:true });
-        v.addEventListener('contextmenu', e => e.preventDefault());
+        v.addEventListener("ended", () => { showContinue(); }, { once: true });
+        v.addEventListener("contextmenu", e => e.preventDefault());
       }
     };
   }
 
-function questionTrial(q, side, meta){
-  const stem = getStem(q, side);
+  function questionTrial(q, side, meta) {
+    const stem = getStem(q, side);
 
-  // Build option objects with original indices
-  const raw = ["a","b","c","d"]
-    .map((k,i) => ({ val: (q[`${side}_${k}`]||"").trim(), origIndex: i }))
-    .filter(o => o.val.length > 0);
+    // Build option objects with original indices
+    const raw = ["a","b","c","d"]
+      .map((k,i) => ({ val: (q[`${side}_${k}`] || "").trim(), origIndex: i }))
+      .filter(o => o.val.length > 0);
 
-  // The correct index as authored (0..3)
-  const authoredCorrect = Number(q[`correct_${side}_index`]) || 0;
+    // The correct index as authored (0..3)
+    const authoredCorrect = Number(q[`correct_${side}_index`]) || 0;
 
-  // Shuffle the options
-  const opts = jsPsych.randomization.shuffle(raw);
+    // Shuffle the options
+    const opts = jsPsych.randomization.shuffle(raw);
 
-  // Where did the original correct option end up?
-  const correctIndex = opts.findIndex(o => o.origIndex === authoredCorrect);
+    // Where did the original correct option end up?
+    const correctIndex = opts.findIndex(o => o.origIndex === authoredCorrect);
 
-  const label = i => String.fromCharCode(65+i); // A,B,C,D
+    const label = i => String.fromCharCode(65 + i); // A,B,C,D
 
-  const optionsHTML = opts.map((o,i)=>{
-    const isImage = /\.(png|jpe?g|gif|webp)$/i.test(o.val);
-    const content = isImage
-      ? `<img class="optimg" src="${o.val}" alt="opt ${label(i)}">`
-      : `<div class="opttext">${o.val}</div>`;
-    return `
-      <div class="cell">
-        <div><strong>${label(i)}</strong></div>
-        ${content}
-        <div style="margin-top:8px">
-          <button class="jspsych-btn" data-choice="${i}">Choose ${label(i)}</button>
-        </div>
-      </div>`;
-  }).join("");
+    const optionsHTML = opts.map((o,i) => {
+      const isImage = /\.(png|jpe?g|gif|webp)$/i.test(o.val);
+      const content = isImage
+        ? `<img class="optimg" src="${o.val}" alt="opt ${label(i)}">`
+        : `<div class="opttext">${o.val}</div>`;
+      return `
+        <div class="cell">
+          <div><strong>${label(i)}</strong></div>
+          ${content}
+          <div style="margin-top:8px">
+            <button class="jspsych-btn" data-choice="${i}">Choose ${label(i)}</button>
+          </div>
+        </div>`;
+    }).join("");
 
-  const stemHTML = stem
-    ? (/\.(png|jpe?g|gif|webp)$/i.test(stem) ? `<img class="stem" src="${stem}">`
-                                             : `<div class="stem opttext">${stem}</div>`)
-    : "";
+    const stemHTML = stem
+      ? (/\.(png|jpe?g|gif|webp)$/i.test(stem) ? `<img class="stem" src="${stem}">`
+                                               : `<div class="stem opttext">${stem}</div>`)
+      : "";
 
-  const prompt = (q.prompt || "")
-    .replace(/^"(.*)"$/,'$1')
-    .normalize("NFKC")
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"');
+    const prompt = (q.prompt || "")
+      .replace(/^"(.*)"$/,'$1')
+      .normalize("NFKC")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"');
 
-  return {
-    type: jsPsychHtmlButtonResponse,
-    stimulus: `
-      <div class="wrap">
-        <div class="center" style="margin-bottom:8px">
-          <p><strong>${prompt}</strong></p>
-        </div>
-        ${stemHTML}
-        <div class="grid">${optionsHTML}</div>
-      </div>`,
-    choices: [],
-    on_load: () => {
-      document.querySelectorAll("button[data-choice]").forEach(btn=>{
-        btn.onclick = () => {
-          const choice = Number(btn.dataset.choice);
-          jsPsych.finishTrial({
-            phase: "question",
-            qid: q.id || "",
-            scene: q.scene || "",
-            version: q.version || "",
-            side,
-            // store both the new order and which was correct
-            option_order: opts.map(o => o.origIndex).join(','), // e.g., "2,0,1,3"
-            choice_index: choice,
-            correct_index: correctIndex,
-            is_correct: choice === correctIndex,
-            ...meta
-          });
-        };
-      });
-    }
-  };
-}
+    return {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `
+        <div class="wrap">
+          <div class="center" style="margin-bottom:8px">
+            <p><strong>${prompt}</strong></p>
+          </div>
+          ${stemHTML}
+          <div class="grid">${optionsHTML}</div>
+        </div>`,
+      choices: [],
+      on_load: () => {
+        document.querySelectorAll("button[data-choice]").forEach(btn => {
+          btn.onclick = () => {
+            const choice = Number(btn.dataset.choice);
+            jsPsych.finishTrial({
+              phase: "question",
+              qid: q.id || "",
+              scene: q.scene || "",
+              version: q.version || "",
+              side,
+              option_order: opts.map(o => o.origIndex).join(","), // e.g., "2,0,1,3"
+              choice_index: choice,
+              correct_index: correctIndex,
+              is_correct: choice === correctIndex,
+              ...meta
+            });
+          };
+        });
+      }
+    };
+  }
 
-  function prefSlider(t){
+  function prefSlider(t) {
     return {
       type: jsPsychHtmlSliderResponse,
       stimulus: '<div class="center"><p><strong>How much did you like the clip you just watched?</strong></p></div>',
@@ -274,11 +315,11 @@ function questionTrial(q, side, meta){
       slider_width: 700,
       labels: ['0 (Not at all)','1','2 (Neutral)','3','4 (Very much)'],
       require_movement: true,
-      data: { phase:"preference", ...t }
+      data: { phase: "preference", ...t }
     };
   }
 
-  function simultaneitySlider(t){
+  function simultaneitySlider(t) {
     return {
       type: jsPsychHtmlSliderResponse,
       stimulus: '<div class="center"><p><strong>To what extent did the visual and auditory motion begin at the same time?</strong></p></div>',
@@ -286,105 +327,154 @@ function questionTrial(q, side, meta){
       slider_width: 700,
       labels: ['0 (Very far apart)','1','2 (Somewhat apart)','3','4 (Exactly the same time)'],
       require_movement: true,
-      data: { phase:"simultaneity_slider", ...t }
+      data: { phase: "simultaneity_slider", ...t }
     };
   }
 
-  // ---------- design ----------
+  function screenTrial(html, btn = "Continue") {
+    return {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `<div class="wrap">${html}</div>`,
+      choices: [btn]
+    };
+  }
+
+  function oneTextQuestion({ name, prompt, placeholder = "", required = true, button = "Continue" }) {
+    return {
+      type: jsPsychSurveyText,
+      preamble: `<div class="center"><h2>Final Questions</h2></div>`,
+      questions: [
+        { prompt: `<p style="font-weight:600;margin:0 0 8px">${prompt}</p>`, name, required, placeholder }
+      ],
+      button_label: button,
+      on_load: () => {
+        const style = document.createElement("style");
+        style.textContent = `
+          .jspsych-survey-text .jspsych-survey-text-preamble { text-align:center; }
+          .jspsych-survey-text-question { max-width:720px; margin:0 auto 18px; text-align:left; }
+          .jspsych-survey-text-question input {
+            width:100%; padding:10px; border-radius:8px; border:1px solid #ddd; font-size:16px;
+          }
+          .jspsych-btn { padding:10px 18px; border-radius:8px; }
+        `;
+        document.head.appendChild(style);
+      }
+    };
+  }
+
+  /* ==============================
+     Design & Flow
+  ============================== */
   const SCENES   = ["dog","horse","penguin","plane","car","roomba"];
   const VERSIONS = [1,2,3];
-  const ROTATIONS = [
-    { moa:{1:"sync", 2:"3s", 3:"1s"}, dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"} },
-    { moa:{1:"3s", 2:"1s", 3:"sync"}, dir:{1:"RtoL", 2:"LtoR", 3:"RtoL"} },
-    { moa:{1:"1s", 2:"sync", 3:"3s"}, dir:{1:"LtoR", 2:"RtoL", 3:"LtoR"} }
-  ];
+  // If your files are literally "..._sync.mp4", keep MOAS = ["0s","1s","3s"] and rely on filename() mapping.
+  const MOAS     = ["0s","1s","3s"];
 
   (async () => {
-    const pid = getParam("pid") || "";
-    const rot = ROTATIONS[ pid ? (hash32(pid) % ROTATIONS.length) : Math.floor(Math.random()*ROTATIONS.length) ];
-
+    // URL overrides for practice (optional)
     const PRACTICE_VIDEO = getParam("pvid") || "videos/practice_v1.mp4";
     const PRACTICE_SIDE  = (getParam("pside") || "left").toLowerCase() === "right" ? "right" : "left";
 
+    // Load CSV once
     const rows = await loadCSV("logic.csv");
 
- // Practice
-const practiceQs = questionsFor(rows, "practice", "v1").sort((a,b)=> Number(a.q) - Number(b.q));
+    /* ---------- Practice ---------- */
+    const practiceQs = questionsFor(rows, "practice", "v1").sort((a,b) => Number(a.q) - Number(b.q));
 
-const practiceTimeline = [
-  {
-    type: jsPsychHtmlButtonResponse,
-    stimulus: `<div class="wrap center">
-      <h2>Practice</h2>
-      <p>First, you will watch <strong>one practice clip</strong>, answer
-      <strong>2 rating questions</strong>, and then <strong>4 practice memory questions</strong>
-      to get familiar with the task.</p>
-    </div>`,
-    choices: ["Begin Practice"]
-  },
+    const practiceTimeline = [
+      screenTrial(`
+        <div class="center">
+          <h2>Practice</h2>
+          <p>First, you will watch <strong>one practice clip</strong>, answer
+          <strong>2 rating questions</strong>, and then <strong>4 practice memory questions</strong>
+          to get familiar with the task.</p>
+        </div>`, "Begin Practice"),
+      videoTrial(PRACTICE_VIDEO, { practice: true }),
+      prefSlider({ practice: true }),
+      simultaneitySlider({ practice: true })
+    ];
 
-  // Practice video
-  videoTrial(PRACTICE_VIDEO, { practice:true }),
+    if (practiceQs.length === 0) {
+      practiceTimeline.push(
+        screenTrial(`<div class="center"><p><em>No practice questions found (scene "practice", version "v1").</em></p></div>`, "Continue")
+      );
+    } else {
+      practiceQs.forEach(q => {
+        practiceTimeline.push( questionTrial(q, PRACTICE_SIDE, { practice: true }) );
+      });
+    }
 
-  // Eating sliders
-  prefSlider({ practice:true }),
-  simultaneitySlider({ practice:true })
-];
+    const practiceCompleteScreen = screenTrial(`
+      <div class="center">
+        <h3>Practice complete!</h3>
+        <p>The main experiment will now begin.</p>
+      </div>`, "Start main task");
 
-if (practiceQs.length === 0){
-  practiceTimeline.push({
-    type: jsPsychHtmlButtonResponse,
-    stimulus: `<div class="wrap center"><p><em>No practice questions found (scene "practice", version "v1").</em></p></div>`,
-    choices: ["Continue"],
-    data: { phase:"no_questions_practice" }
-  });
-} else {
-  practiceQs.forEach(q => {
-    practiceTimeline.push( questionTrial(q, PRACTICE_SIDE, { practice:true }) );
-  });
-}
+    /* ---------- Intro screens ---------- */
+    const introScreens = [
+      screenTrial(`
+        <h2 class="center">Welcome to the study!</h2>
+        <p>You will watch <strong>18 short animated videos</strong> showing objects moving across the screen.</p>
+        <p>The sound will also move between your left and right headphones with the object.</p>
+        <p>Please make sure you are wearing <strong>headphones in a quiet environment</strong>.</p>
+      `, "Next"),
+      screenTrial(`
+        <h3 class="center">What you'll do after each video</h3>
+        <ol>
+          <li><strong>Preference rating</strong> – “How much did you like the clip you just watched?”</li>
+          <li><strong>Timing judgment</strong> – “To what extent did the visual and auditory motion begin at the same time?”<br>
+            <small>This means: did the movement you <em>saw</em> and the movement you <em>heard</em> seem to start together, or did one begin slightly earlier?</small>
+          </li>
+          <li><strong>Memory test</strong> – You will answer 4 memory questions regarding the details of the video you just watched.</li>
+        </ol>
+        <p>After all 18 trials, you’ll answer a few brief demographic questions.</p>
+      `, "Next"),
+      screenTrial(`
+        <h3 class="center">Using the sliders</h3>
+        <p>For the preference and timing ratings, you will use a slider from <strong>0 to 4</strong>.</p>
+        <ul>
+          <li>Move the slider to the number that best matches your judgment.</li>
+          <li>If you want to select <strong>2 (Neutral)</strong>, click directly on 2.</li>
+        </ul>
+      `, "Begin practice")
+    ];
 
-practiceTimeline.push({
-  type: jsPsychHtmlButtonResponse,
-  stimulus: `<div class="wrap center"><p>Great! Practice is complete. The main task will now begin.</p></div>`,
-  choices: ["Start Main Task"]
-});
-
-    // Main trials
+    /* ---------- Main trials (fully random per participant) ---------- */
+    // For each scene, randomly permute MOAs across versions; direction is sampled independently per trial.
     const trials = [];
-    for (const scene of SCENES){
-      for (const v of VERSIONS){
-        const moa = rot.moa[v];
-        const dir = rot.dir[v];
+    for (const scene of SCENES) {
+      const moasPerm = jsPsych.randomization.shuffle(MOAS.slice()); // random pairing per scene
+      for (let i = 0; i < VERSIONS.length; i++) {
+        const v   = VERSIONS[i];
+        const moa = moasPerm[i];
+        const dir = jsPsych.randomization.sampleWithoutReplacement(["LtoR","RtoL"], 1)[0];
         const stim = filename(scene, v, dir, moa);
-        trials.push({ scene, version:v, dir, moa, stimulus: stim });
+        trials.push({ scene, version: v, dir, moa, stimulus: stim });
       }
     }
+
+    // Randomize overall presentation order (18 trials)
     const shuffled = jsPsych.randomization.shuffle(trials);
 
-    const mainTimeline = [{
-      type: jsPsychHtmlButtonResponse,
-      stimulus: `<div class="wrap center">
-        <h2>Welcome</h2>
-        <p>You will watch 18 clips. After each clip, please answer all questions.</p>
-      </div>`,
-      choices: ["Begin"]
-    }];
+    const mainTimeline = [
+      screenTrial(`
+        <div class="center">
+          <h2>Welcome</h2>
+          <p>You will watch 18 clips. After each clip, please answer all questions.</p>
+        </div>`, "Begin")
+    ];
 
-    for (const t of shuffled){
+    for (const t of shuffled) {
       const side = (t.dir === "LtoR") ? "left" : "right";
       mainTimeline.push( videoTrial(t.stimulus, t) );
       mainTimeline.push( prefSlider(t) );
       mainTimeline.push( simultaneitySlider(t) );
 
       const allQs = questionsFor(rows, t.scene, t.version);
-      if (allQs.length === 0){
-        mainTimeline.push({
-          type: jsPsychHtmlButtonResponse,
-          stimulus: `<div class="wrap center"><p><em>No questions found for ${t.scene} v${t.version}.</em></p></div>`,
-          choices: ["Continue"],
-          data: { phase:"no_questions", ...t }
-        });
+      if (allQs.length === 0) {
+        mainTimeline.push(
+          screenTrial(`<div class="center"><p><em>No questions found for ${t.scene} ${t.version}.</em></p></div>`, "Continue")
+        );
       } else {
         jsPsych.randomization.shuffle(allQs).forEach(q => {
           mainTimeline.push( questionTrial(q, side, t) );
@@ -392,15 +482,56 @@ practiceTimeline.push({
       }
     }
 
-    mainTimeline.push({
-      type: jsPsychHtmlButtonResponse,
-      stimulus: '<div class="center"><p>Thanks! You’re all set.</p></div>',
-      choices: ['Finish']
-    });
+    mainTimeline.push(
+      screenTrial('<div class="center"><p>Thanks! You’re all set.</p></div>', "Finish")
+    );
 
+    /* ---------- Final questions & Debrief ---------- */
+    const q_age = oneTextQuestion({ name: "age", prompt: "1) Please enter your age.", placeholder: "e.g., 26" });
+    const q_gender = oneTextQuestion({ name: "gender", prompt: "2) Please enter your gender.", placeholder: "e.g., woman / man / nonbinary / prefer to self-describe" });
+    const q_race = oneTextQuestion({ name: "race_ethnicity", prompt: "3) Please enter your race/ethnicity.", placeholder: "e.g., Asian; White; Black; Hispanic/Latino; Multiracial; …" });
+    const q_hearing = oneTextQuestion({ name: "hearing", prompt: "4) Do you have normal hearing?", placeholder: "Yes / No / Unsure" });
+
+    const final_debrief = {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `
+        <div style="max-width: 820px; margin: 0 auto; line-height:1.5;">
+          <h2 class="center">Thank you for participating in this study!</h2>
+          <p>
+            In this experiment, sometimes the visual and auditory motion of the object started at the same time,
+            and sometimes the visual motion began slightly earlier. We are interested in whether you can perceive
+            these differences, whether your liking of the clips varies depending on synchrony, and whether synchrony
+            influences your memory for the details of the video clips.
+          </p>
+          <p>
+            If you would like to discuss the study further or are curious about this research, please contact
+            <strong>Estelle Song</strong> at <a href="mailto:ssong@albany.edu">ssong@albany.edu</a> or the faculty advisor,
+            <strong>Dr. Ronald Friedman</strong> at <a href="mailto:rfriedman@albany.edu">rfriedman@albany.edu</a>.
+            You may also contact either researcher if you would like your data withdrawn from the study. If you choose to do so,
+            you will still receive full credit for participation and will not be penalized in any way.
+          </p>
+          <p>
+            If you experienced any discomfort during this study, or wish to discuss any other concerns, you may contact the
+            <strong>University Counseling Center</strong> at (518) 442-5800.
+          </p>
+          <p>
+            Because this research is potentially important, we kindly ask that you please do not discuss the study with others
+            before they participate. Prior knowledge could affect their natural responses.
+          </p>
+          <p class="center">Thank you very much for your assistance with this project!</p>
+        </div>
+      `,
+      choices: ["Finish"]
+    };
+
+    /* ---------- Run ---------- */
     jsPsych.run([
+      ...introScreens,
       ...practiceTimeline,
-      ...mainTimeline
+      practiceCompleteScreen,
+      ...mainTimeline,
+      q_age, q_gender, q_race, q_hearing,
+      final_debrief
     ]);
   })();
 </script>
