@@ -363,7 +363,7 @@
   }
 
   /* ==============================
-     Design & Flow
+     Design 
   ============================== */
   const SCENES   = ["dog","horse","penguin","plane","car","roomba"];
   const VERSIONS = [1,2,3];
@@ -414,7 +414,7 @@
     const introScreens = [
       screenTrial(`
         <h2 class="center">Welcome to the study!</h2>
-        <p>You will watch <strong>18 short animated videos</strong> showing objects moving across the screen.</p>
+        <p>In this study, you will watch <strong>18 short animated videos</strong> showing objects moving across the screen.</p>
         <p>The sound will also move between your left and right headphones with the object.</p>
         <p>Please make sure you are wearing <strong>headphones in a quiet environment</strong>.</p>
       `, "Next"),
@@ -454,7 +454,7 @@
     }
 
     // Randomize overall presentation order (18 trials)
-    const shuffled = jsPsych.randomization.shuffle(trials);
+    const shuffled = jsPsych.randomization.shuffle(trials).slice(0,2);
 
     const mainTimeline = [
       screenTrial(`
