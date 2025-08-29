@@ -460,7 +460,7 @@
     }
 
     // Randomize overall presentation order (18 trials)
-    const shuffled = jsPsych.randomization.shuffle(trials).slice(0,2);
+    const shuffled = jsPsych.randomization.shuffle(trials);
 
     const mainTimeline = [
       screenTrial(`
