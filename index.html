@@ -407,6 +407,71 @@
         <p>The main experiment will now begin.</p>
       </div>`, "Start main task");
 
+  /* ================================ Consent ================================= */
+  let CONSENT_GIVEN = false; // 
+ const CONSENT_HTML = `
+  <div style="max-width:900px;margin:0 auto;text-align:left;font-size:16px;line-height:1.5">
+    <h2 class="center">Informed Consent for Research Participation</h2>
+
+    <p><strong>Primary Investigator:</strong> Sijia (Estelle) Song<br>
+       <strong>Department:</strong> Department of Psychology, University at Albany<br>
+       <strong>Term:</strong> Fall 2025<br>
+       <strong>Study Title:</strong> “Preferences and Memory for Short Animated Clips (Study 2)”</p>
+
+    <p><strong>PURPOSE:</strong> This study examines people’s preferences for and memory of short animated clips.</p>
+
+    <p><strong>PROCEDURES:</strong> During the study, you will watch 18 short animated videos. After each video, you will:
+      (1) rate how much you liked the clip,
+      (2) judge to what extent you think the visual and auditory motion began at the same time, and
+      (3) answer four memory questions about the details of the video you just watched. You will be choosing from four options. 
+      Please wear headphones in a quiet environment. After all 36 trials, you’ll answer a few brief demographic questions.
+      Total participation time will be approximately 30 minutes.</p>
+
+    <p><strong>BENEFITS:</strong> Although you may not directly benefit from your participation, society may ultimately benefit from the knowledge obtained from this research.
+      It is anticipated that this study will provide meaningful information about people’s preferences for and memory of short animated clips.</p>
+
+    <p><strong>RISKS:</strong> We do not anticipate more than minimal risk in your participation. Your participation in the study is confidential, and all data will be kept anonymous
+      (answers you enter into the computer will not be associated with your name or any other personal identifiers). You can choose not to answer any questions that you find
+      uncomfortable, and if you feel uncomfortable during the study for any reason, you can discontinue participation at any time without penalty.</p>
+
+    <p><strong>PARTICIPATION:</strong> Your participation in this study is voluntary. Even after you agree to participate in the research or sign the informed consent document,
+      you may decide to leave the study at any time without penalty or loss of benefits to which you may otherwise have been entitled. You can stop participating at any time
+      during the study by notifying the researcher and may also refrain from answering any questions that you would feel uncomfortable answering. You also may choose to
+      withhold any of your responses from inclusion in the study.</p>
+
+    <p><strong>COMPENSATION:</strong> All students who choose to participate in this study will be awarded <strong>0.5 credit</strong> toward fulfillment of the research
+      requirement in APSY 101 (Introductory Psychology).</p>
+
+    <p><strong>CONFIDENTIALITY:</strong> All responses are anonymous. None of the data collected on the computer will contain information that could be used to identify you.
+      Data will be maintained for a minimum of 3 and a maximum of 10 years, at which point it will be destroyed. Study results will be reported for the group only and will not
+      refer to individuals. Results may be reported in the context of scientific journals, professional presentations, and other reputable venues. All information obtained in this
+      study is strictly confidential unless disclosure is required by law. In addition, the Institutional Review Board, and University or government officials responsible for
+      monitoring this study may inspect these records.</p>
+
+    <p><strong>Contacts:</strong> You may contact the researcher, Sijia (Estelle) Song, at
+      <a href="mailto:ssong@albany.edu">ssong@albany.edu</a> or the researcher’s faculty advisor, Dr. Ronald Friedman (UAlbany Professor of Psychology), at
+      <a href="mailto:rfriedman@albany.edu">rfriedman@albany.edu</a> if you would like any additional information about this study or its results.</p>
+
+    <p><strong>YOUR RIGHTS AS A PARTICIPANT:</strong></p>
+    <p>Research at the University at Albany involving human participants is carried out under the oversight of the Institutional Review Board (IRB).
+      This research has been reviewed and approved by the IRB. If you have any questions concerning your rights as a research subject or if you wish to report any concerns about
+      the study, you may contact the University at Albany Office of Regulatory and Research Compliance at 1400 Washington Ave, Albany, NY (MSC 100E) 12222,
+      1-866-857-5459, or <a href="mailto:rco@albany.edu">rco@albany.edu</a>.</p>
+
+    <hr>
+    <p><em>I have read, or been informed of, the information about this study. I hereby consent to participate in the study.</em></p>
+  </div>
+`;
+  const consentTrial = {
+    type: jsPsychHtmlButtonResponse,
+    stimulus: CONSENT_HTML,
+    choices: ["Yes, I consent", "No, I do not consent"],
+    on_finish: (data) => {
+      data.phase = "consent";
+      data.consent_choice = data.response === 0 ? "yes" : "no";
+      CONSENT_GIVEN = (data.response === 0);
+    }
+  };
     /* ---------- Intro screens ---------- */
     const introScreens = [
     screenTrial(`
@@ -531,6 +596,7 @@
     
     /* ---------- Run ---------- */
     jsPsych.run([
+      consentTrial,
       ...introScreens,
       ...practiceTimeline,
       practiceCompleteScreen,
