@@ -420,12 +420,11 @@
 
     <p><strong>PURPOSE:</strong> This study examines people’s preferences for and memory of short animated clips.</p>
 
-    <p><strong>PROCEDURES:</strong> During the study, you will watch 18 short animated videos. After each video, you will:
-      (1) rate how much you liked the clip,
-      (2) judge to what extent you think the visual and auditory motion began at the same time, and
-      (3) answer four memory questions about the details of the video you just watched. You will be choosing from four options. 
-      Please wear headphones in a quiet environment. After all 36 trials, you’ll answer a few brief demographic questions.
-      Total participation time will be approximately 30 minutes.</p>
+    <p><strong>PROCEDURES:</strong> In this study, you’ll watch a set of short animated videos. After each video, you’ll: 
+      (1) Tell us how much you liked it; 
+      (2) Tell us if the picture and the sound seemed to start together; 
+      (3) Pick the right answer to a short memory question.
+     At the end, you’ll answer a few quick questions about yourself. The study will take about 30 minutes. </p>
 
     <p><strong>BENEFITS:</strong> Although you may not directly benefit from your participation, society may ultimately benefit from the knowledge obtained from this research.
       It is anticipated that this study will provide meaningful information about people’s preferences for and memory of short animated clips.</p>
@@ -443,7 +442,7 @@
       requirement in APSY 101 (Introductory Psychology).</p>
 
     <p><strong>CONFIDENTIALITY:</strong> All responses are anonymous. None of the data collected on the computer will contain information that could be used to identify you.
-      Data will be maintained for a minimum of 3 and a maximum of 10 years, at which point it will be destroyed. Study results will be reported for the group only and will not
+      Data will be maintained for a minimum of 3 and a maximum of 5 years, at which point it will be destroyed. Study results will be reported for the group only and will not
       refer to individuals. Results may be reported in the context of scientific journals, professional presentations, and other reputable venues. All information obtained in this
       study is strictly confidential unless disclosure is required by law. In addition, the Institutional Review Board, and University or government officials responsible for
       monitoring this study may inspect these records.</p>
@@ -563,36 +562,45 @@
     const q_race = oneTextQuestion({ name: "race_ethnicity", prompt: "3) Please enter your race/ethnicity.", placeholder: "e.g., Asian; White; Black; Hispanic/Latino; Multiracial; …" });
     const q_hearing = oneTextQuestion({ name: "hearing", prompt: "4) Do you have normal hearing?", placeholder: "Yes / No / Unsure" });
 
-  const final_debrief = {
-    type: jsPsychHtmlButtonResponse,
-    stimulus: `
-      <div style="max-width: 820px; margin: 0 auto; line-height:1.5; text-align:left;">
-        <h2 class="center">Thank you for participating in this study!</h2>
-        <p>
-          In this experiment, the visual and auditory motion of the object sometimes started at the same time,
-          and sometimes one started slightly earlier. We are interested in whether you notice
-          these differences, whether they affect how much you like the clips, and whether synchrony influences your memory for the videos.
-        </p>
-        <p>
-          If you would like to discuss the study further or are curious about this research, please contact
-          Estelle Song at <a href="mailto:ssong@albany.edu">ssong@albany.edu</a> or the faculty advisor,
-          Dr. Ronald Friedman at <a href="mailto:rfriedman@albany.edu">rfriedman@albany.edu</a>.
-          You may also contact either researcher if you would like your data withdrawn from the study. If you choose to do so,
-          you will still receive full credit for participation and will not be penalized in any way.
-        </p>
-        <p>
-          If you experienced any discomfort during this study, or wish to discuss any other concerns, you may contact the
-          University Counseling Center at (518) 442-5800.
-        </p>
-        <p>
-          Because this research is potentially important, we kindly ask that you please do not discuss the study with others
-          before they participate. Prior knowledge could affect their natural responses.
-        </p>
-        <p class="center"><strong>Thank you very much for your assistance with this project!</strong></p>
-      </div>
-    `,
-    choices: ["Finish"]
-  };
+const final_debrief = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <div style="max-width:820px;margin:0 auto;line-height:1.5;text-align:left;">
+      <h2 class="center">Thank you for participating in this study!</h2>
+
+      <p><strong>What was this study about?</strong><br>
+      We’re studying how people remember short videos and how much they like them—especially when what you see and what you hear don’t line up perfectly. 
+      In everyday life, sights and sounds usually start together (for example, you see a car move and hear it at the same time). 
+      In our study, we sometimes made the sound’s movement start a little after the picture’s movement. 
+      This timing gap is called motion onset asynchrony (MOA).</p>
+
+      <p><strong>What did we test?</strong><br>
+      We used three setups: no delay, a small delay, and a larger delay. 
+      Our main idea is that a moderate delay might be “just right”—interesting enough to grab attention and help memory and liking, 
+      but not so off that it feels distracting. We’ll also test whether liking helps explain memory—in other words, 
+      whether clips you like more are also easier to remember when timing is a little off.</p>
+
+      <p><strong>Why does this matter?</strong><br>
+      Extended reality (XR) is used in training, education, games, and entertainment. Designers want experiences that people enjoy and also remember. 
+      Those goals don’t always match: very immersive experiences can feel amazing yet sometimes make it harder to remember details, 
+      while simpler setups can aid memory but feel less engaging. Our results can help find a better balance.</p>
+
+      <p>If you would like to discuss the study further or are curious about this research, 
+      please feel free to contact the researcher, <a href="mailto:ssong@albany.edu">Estelle Song</a>, 
+      or the faculty advisor, <a href="mailto:rfriedman@albany.edu">Dr. Ronald Friedman</a>. 
+      You may also contact either researcher if you would like your data withdrawn from the study. 
+      If you choose to do so, you will still receive full credit for participation and will not be penalized in any way.</p>
+
+      <p>If you experienced any discomfort during this study, or wish to discuss any other concerns, 
+      you may contact the University Counseling Center at (518) 442-5800.</p>
+
+      <p>Because this research is potentially important, we kindly ask that you please do not discuss the study with others before they participate. 
+      Prior knowledge could affect their natural responses.</p>
+
+      <p class="center"><strong>Thank you very much for your assistance with this project!</strong></p>
+    </div>`,
+  choices: ["Finish"]
+};
     
     /* ---------- Run ---------- */
     jsPsych.run([
