@@ -631,6 +631,23 @@ const final_debrief = {
     </div>`,
   choices: ["Finish"]
 };
+
+const credit_section = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <div style="max-width:820px;margin:0 auto;line-height:1.5;text-align:left;">
+      <h2 class="center">Research Credit Instructions</h2>
+      <p>
+        At the conclusion of this study, a <strong>unique completion code</strong> will be displayed on your screen. 
+        Please record this code carefully and email it to 
+        <a href="mailto:friedmanlab11@gmail.com">friedmanlab11@gmail.com</a> 
+        to receive research credit.
+      </p>
+      <p><em>For confidentiality:</em> please include <strong>only</strong> the completion code in your email; 
+      do not include your name, student ID, or any other personal information.</p>
+    </div>`,
+  choices: ["Finish"]
+};
     
     /* ---------- Run ---------- */
     jsPsych.run([
@@ -640,7 +657,8 @@ const final_debrief = {
       practiceCompleteScreen,
       ...mainTimeline,
       q_age, q_gender, q_race, q_hearing,
-      final_debrief
+      final_debrief,
+      credit_section
     ]);
   })();
 </script>
