@@ -2,16 +2,16 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>MOA2 Experiment</title>
+  <title>MOA2</title>
 
   <!-- jsPsych CSS -->
   <link rel="stylesheet" href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css" />
 
- <style>
+  <style>
     /* Layout & base */
     .jspsych-content-wrapper { display: flex; justify-content: center; }
     .jspsych-content { max-width: 960px !important; margin: 40px auto !important; }
-    body { font-family: system-ui, sans-serif; background: #fafafa; line-height: 1.6;}
+    body { font-family: system-ui, sans-serif; background: #fafafa; line-height: 1.6; }
 
     /* Center utility (apply only where desired) */
     .center { text-align: center; }
@@ -77,27 +77,40 @@
   /* ==============================
      Data Store
   ============================== */
-  const SHEET_URL = "https://script.google.com/macros/s/AKfycbz-5GhXQzK2N9ld_orabc1mwXOdhS_HSSOt00eMoNfWIqPtfK3X_pX-pkTxDS80PGXjCA/exec";
+  const GS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbz-5GhXQzK2N9ld_orabc1mwXOdhS_HSSOt00eMoNfWIqPtfK3X_pX-pkTxDS80PGXjCA/exec";
 
   const jsPsych = initJsPsych({
     on_finish: async () => {
+      const allData = jsPsych.data.get();
+
+      // Completion based on number of video trials (18 expected)
+      const nVideos = allData.filter({ phase: "video" }).count();
+      const expectedVideos = (SCENES.length || 0) * (VERSIONS.length || 0); // 6 * 3 = 18
+      const isComplete = (nVideos === expectedVideos);
+
       const payload = {
         timestamp: new Date().toISOString(),
-        participant: getParam("pid") || "",
-        data: jsPsych.data.get().values()
+        sona_code: sonaCode,
+        completion_code: completionCode,
+        is_complete: isComplete,
+        n_rows: allData.count(),
+        n_videos: nVideos,
+        n_questions: allData.filter({ phase: "question" }).count(),
+        userAgent: navigator.userAgent,
+        data: compactRows(allData.values())
       };
+
       try {
-        await fetch(SHEET_URL, {
+        await fetch(GS_WEBAPP_URL, {
           method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "text/plain;charset=UTF-8" }, // simple req, no CORS preflight
           body: JSON.stringify(payload),
           keepalive: true
         });
         alert("Thanks! Your data was uploaded to Google Sheets.");
       } catch (e) {
         console.error(e);
-        jsPsych.data.get().localSave("csv", "single_trial_demo.csv");
+        allData.localSave("csv", "moa2_fallback.csv");
         alert("Upload failed — CSV downloaded locally instead.");
       }
     }
@@ -141,27 +154,18 @@
         complete: (res) => {
           try {
             const rows = res.data.map(r => {
-              // normalize keys and values
               const obj = {};
               for (const k in r) obj[k.trim()] = (r[k] ?? "").toString().trim();
-
-              // enrich with scene/version/q from id (if provided)
               const parsed = parseId(obj.id || "");
               if (!obj.scene)   obj.scene   = parsed.scene;
               if (!obj.version) obj.version = parsed.version;
               if (!obj.q)       obj.q       = parsed.q;
-
-              // canonicalize
               obj.scene = (obj.scene || "").toLowerCase();
-              if (obj.version && !String(obj.version).startsWith("v")) {
-                obj.version = `v${obj.version}`;
-              }
+              if (obj.version && !String(obj.version).startsWith("v")) obj.version = `v${obj.version}`;
               return obj;
             });
             resolve(rows);
-          } catch (err) {
-            reject(err);
-          }
+          } catch (err) { reject(err); }
         },
         error: reject
       });
@@ -193,6 +197,35 @@
       video.addEventListener(ev, reapply);
     });
   }
+
+  // ---- Compact rows for upload (log IDs + light fields, avoid heavy blobs) ----
+  function compactRows(rows){
+    return rows.map(r => {
+      const {
+        phase, rt, response,
+        scene, version, dir, moa, side,
+        qid, option_order,
+        choice_index, correct_index, is_correct,
+        // ensure these IDs are present on every row
+        sona_code, completion_code
+      } = r;
+      return {
+        phase, rt, response,
+        scene, version, dir, moa, side,
+        qid, option_order,
+        choice_index, correct_index, is_correct,
+        sona_code, completion_code
+      };
+    });
+  }
+
+  // --- SONA code & completion code (same pattern as MOA1) ---
+  const sonaCode =
+    getParam("pid") || getParam("survey_code") || getParam("sona_id") || getParam("id") || "";
+  const completionCode = sonaCode || ("MOA2-" + Math.random().toString(36).slice(2,8).toUpperCase());
+
+  // Put codes onto every data row
+  jsPsych.data.addProperties({ sona_code: sonaCode, completion_code: completionCode });
 
   /* ==============================
      Trial builders
@@ -232,21 +265,14 @@
   function questionTrial(q, side, meta) {
     const stem = getStem(q, side);
 
-    // Build option objects with original indices
     const raw = ["a","b","c","d"]
       .map((k,i) => ({ val: (q[`${side}_${k}`] || "").trim(), origIndex: i }))
       .filter(o => o.val.length > 0);
 
-    // The correct index as authored (0..3)
     const authoredCorrect = Number(q[`correct_${side}_index`]) || 0;
-
-    // Shuffle the options
     const opts = jsPsych.randomization.shuffle(raw);
-
-    // Where did the original correct option end up?
     const correctIndex = opts.findIndex(o => o.origIndex === authoredCorrect);
-
-    const label = i => String.fromCharCode(65 + i); // A,B,C,D
+    const label = i => String.fromCharCode(65 + i);
 
     const optionsHTML = opts.map((o,i) => {
       const isImage = /\.(png|jpe?g|gif|webp)$/i.test(o.val);
@@ -332,29 +358,21 @@
   }
 
   function screenTrial(html, btn = "Continue") {
-    return {
-      type: jsPsychHtmlButtonResponse,
-      stimulus: `<div class="wrap">${html}</div>`,
-      choices: [btn]
-    };
+    return { type: jsPsychHtmlButtonResponse, stimulus: `<div class="wrap">${html}</div>`, choices: [btn] };
   }
 
   function oneTextQuestion({ name, prompt, placeholder = "", required = true, button = "Continue" }) {
     return {
       type: jsPsychSurveyText,
       preamble: `<div class="center"><h2>Final Questions</h2></div>`,
-      questions: [
-        { prompt: `<p style="font-weight:600;margin:0 0 8px">${prompt}</p>`, name, required, placeholder }
-      ],
+      questions: [{ prompt: `<p style="font-weight:600;margin:0 0 8px">${prompt}</p>`, name, required, placeholder }],
       button_label: button,
       on_load: () => {
         const style = document.createElement("style");
         style.textContent = `
           .jspsych-survey-text .jspsych-survey-text-preamble { text-align:center; }
           .jspsych-survey-text-question { max-width:720px; margin:0 auto 18px; text-align:left; }
-          .jspsych-survey-text-question input {
-            width:100%; padding:10px; border-radius:8px; border:1px solid #ddd; font-size:16px;
-          }
+          .jspsych-survey-text-question input { width:100%; padding:10px; border-radius:8px; border:1px solid #ddd; font-size:16px; }
           .jspsych-btn { padding:10px 18px; border-radius:8px; }
         `;
         document.head.appendChild(style);
@@ -363,132 +381,75 @@
   }
 
   /* ==============================
-     Design 
+     Consent & Intro (unchanged)
   ============================== */
-  const SCENES   = ["dog","horse","penguin","plane","car","roomba"];
-  const VERSIONS = [1,2,3];
-  // If your files are literally "..._sync.mp4", keep MOAS = ["0s","1s","3s"] and rely on filename() mapping.
-  const MOAS     = ["0s","1s","3s"];
-
-  (async () => {
-    // URL overrides for practice (optional)
-    const PRACTICE_VIDEO = getParam("pvid") || "videos/practice_v1.mp4";
-    const PRACTICE_SIDE  = (getParam("pside") || "left").toLowerCase() === "right" ? "right" : "left";
-
-    // Load CSV once
-    const rows = await loadCSV("logic.csv");
-
-    /* ---------- Practice ---------- */
-    const practiceQs = questionsFor(rows, "practice", "v1").sort((a,b) => Number(a.q) - Number(b.q));
-
-    const practiceTimeline = [
-      videoTrial(PRACTICE_VIDEO, { practice: true }),
-      prefSlider({ practice: true }),
-      simultaneitySlider({ practice: true })
-    ];
-
-    if (practiceQs.length === 0) {
-      practiceTimeline.push(
-        screenTrial(`<div class="center"><p><em>No practice questions found (scene "practice", version "v1").</em></p></div>`, "Continue")
-      );
-    } else {
-      practiceQs.forEach(q => {
-        practiceTimeline.push( questionTrial(q, PRACTICE_SIDE, { practice: true }) );
-      });
-    }
-
-      const practiceTrials = [
-    { scene: "practice1", direction: "LtoR", moa: "demo", stimulus: "videos/practice1_LtoR_demo.mp4" }
-  ];
-
-    const practiceCompleteScreen = screenTrial(`
-      <div class="center">
-        <h3>Practice complete!</h3>
-        <p>The main experiment will now begin.</p>
-      </div>`, "Start main task");
-
-/* ================================ Consent ================================= */
-let CONSENT_GIVEN = false; // will still record consent
-const CONSENT_HTML = `
-  <div style="max-width:900px;margin:0 auto;text-align:left;font-size:16px;line-height:1.5">
-    <h2 class="center">University at Albany, SUNY</h2>
-    <h3 class="center">Informed Consent Information for Research Participation</h3>
-
-    <p><strong>Study Title:</strong> Preferences and Memory for Short Animated Clips (Study 2)<br>
-       <strong>Principal Investigator:</strong> Sijia (Estelle) Song, M.A., Department of Psychology, University at Albany<br>
-       <strong>Faculty Advisor:</strong> Dr. Ronald Friedman, Professor of Psychology, University at Albany<br>
-       <strong>Study Sponsor:</strong> This study is not externally sponsored.</p>
-
-    <h4>Why are you doing this study?</h4>
-    <p>You are being asked to participate in a research study about people’s preferences for and memory of short animated clips.
-    The purpose of this study is to better understand how people respond to audiovisual information, including how much they enjoy short animated clips and how well they remember details from them.</p>
-
-    <h4>Why am I eligible to participate in this study?</h4>
-    <p>You must be at least 18 years old and have normal or corrected-to-normal hearing. Individuals who have previously participated or enrolled in a related study titled 
-    "Preferences and Memory for Short Animated Clips (Study 1)" will also be automatically excluded from enrolling in the proposed study via Sona.</p>
-
-    <h4>What will I do if I choose to be in this study?</h4>
-    <p>If you choose to participate, you will:</p>
-    <ol>
-      <li>Watch a set of short animated videos.</li>
-      <li>After each video, answer three questions:
-        <ul>
-          <li>How much you liked the video.</li>
-          <li>Whether the picture and sound seemed to start together.</li>
-          <li>Four short memory questions about the video.</li>
-        </ul>
-      </li>
-      <li>At the end, you will answer a few quick demographic questions about yourself (e.g., age, gender, hearing status).</li>
-    </ol>
-    <p>Participation will take place entirely online in a single session and will take approximately 30 minutes.</p>
-
-    <h4>Are there any costs I should be aware of?</h4>
-    <p>There are no costs associated with participating in this study other than your time and internet usage.</p>
-
-    <h4>What are the possible risks or discomforts?</h4>
-    <p>We do not anticipate more than minimal risk from your participation.</p>
-    <ul>
-      <li>You may feel some discomfort if you find certain questions uninteresting or repetitive.</li>
-      <li>As with all online research, there is a small risk of breach of confidentiality. We will take steps to minimize this risk, as described below.</li>
-    </ul>
-    <p>This study will not involve any audio or video recording of you.</p>
-
-    <h4>What are the possible benefits for me or others?</h4>
-    <p>You may not directly benefit from participating in this study. However, the knowledge gained may help researchers better understand how people experience and remember audiovisual media.</p>
-
-    <h4>Will I receive compensation for my participation?</h4>
-    <p>Yes. Students who participate will receive <strong>0.5 research credit</strong> toward the APSY 101 (Introductory Psychology) course requirement.</p>
-
-    <h4>How will you protect the information you collect about me, and how will that information be shared?</h4>
-    <p>Your participation is confidential. No identifying information (such as your name or email address) will be collected.</p>
-    <p>All data will be stored securely in University at Albany OneDrive, accessible only to the research team. Data will be retained for a minimum of three (3) years and a maximum of five (5) years, after which it will be permanently destroyed.</p>
-    <p>Study results will be reported in aggregate (group-level) form in academic publications and presentations. Individual responses will not be linked to your identity.</p>
-
-    <h4>Will my data be used in future research?</h4>
-    <p>After removal of identifiers, your data may be used in future research studies or shared with other investigators without additional consent from you.</p>
-
-    <h4>What are my rights as a research participant?</h4>
-    <p>Your participation in this study is voluntary. You may skip any question you do not wish to answer, and you may withdraw at any time without penalty or loss of benefits. If you choose to withdraw, you may also request that your data not be used.</p>
-    <p>If you are a University at Albany student or employee, choosing not to participate will not affect your grades, class standing, employment, or your relationship with the University.</p>
-
-    <h4>Who can I contact if I have questions or concerns?</h4>
-    <p><strong>For questions about this study:</strong><br>
-    - Sijia (Estelle) Song – <a href="mailto:ssong@albany.edu">ssong@albany.edu</a><br>
-    - Dr. Ronald Friedman (Faculty Advisor) – <a href="mailto:rfriedman@albany.edu">rfriedman@albany.edu</a></p>
-
-    <p><strong>For questions about your rights as a research participant:</strong><br>
-    Institutional Review Board<br>
-    Office of Regulatory and Research Compliance<br>
-    University at Albany<br>
-    1400 Washington Ave, Biology 227<br>
-    Albany, NY 12222<br>
-    Phone: 1-866-857-5459<br>
-    Email: <a href="mailto:rco@albany.edu">rco@albany.edu</a></p>
-
-    <hr>
-    <p><em>Consent Statement:</em> I have read (or been informed of) the information above. By clicking “I Agree” below, I consent to participate in this study.</p>
-  </div>
-`;
+  let CONSENT_GIVEN = false;
+  const CONSENT_HTML = `
+    <div style="max-width:900px;margin:0 auto;text-align:left;font-size:16px;line-height:1.5">
+      <h2 class="center">University at Albany, SUNY</h2>
+      <h3 class="center">Informed Consent Information for Research Participation</h3>
+      <p><strong>Study Title:</strong> Preferences and Memory for Short Animated Clips (Study 2)<br>
+         <strong>Principal Investigator:</strong> Sijia (Estelle) Song, M.A., Department of Psychology, University at Albany<br>
+         <strong>Faculty Advisor:</strong> Dr. Ronald Friedman, Professor of Psychology, University at Albany<br>
+         <strong>Study Sponsor:</strong> This study is not externally sponsored.</p>
+      <h4>Why are you doing this study?</h4>
+      <p>You are being asked to participate in a research study about people’s preferences for and memory of short animated clips.
+      The purpose of this study is to better understand how people respond to audiovisual information, including how much they enjoy short animated clips and how well they remember details from them.</p>
+      <h4>Why am I eligible to participate in this study?</h4>
+      <p>You must be at least 18 years old and have normal or corrected-to-normal hearing. Individuals who have previously participated or enrolled in a related study titled 
+      "Preferences and Memory for Short Animated Clips (Study 1)" will also be automatically excluded from enrolling in the proposed study via Sona.</p>
+      <h4>What will I do if I choose to be in this study?</h4>
+      <p>If you choose to participate, you will:</p>
+      <ol>
+        <li>Watch a set of short animated videos.</li>
+        <li>After each video, answer three questions:
+          <ul>
+            <li>How much you liked the video.</li>
+            <li>Whether the picture and sound seemed to start together.</li>
+            <li>Four short memory questions about the video.</li>
+          </ul>
+        </li>
+        <li>At the end, you will answer a few quick demographic questions about yourself (e.g., age, gender, hearing status).</li>
+      </ol>
+      <p>Participation will take place entirely online in a single session and will take approximately 30 minutes.</p>
+      <h4>Are there any costs I should be aware of?</h4>
+      <p>There are no costs associated with participating in this study other than your time and internet usage.</p>
+      <h4>What are the possible risks or discomforts?</h4>
+      <p>We do not anticipate more than minimal risk from your participation.</p>
+      <ul>
+        <li>You may feel some discomfort if you find certain questions uninteresting or repetitive.</li>
+        <li>As with all online research, there is a small risk of breach of confidentiality. We will take steps to minimize this risk, as described below.</li>
+      </ul>
+      <p>This study will not involve any audio or video recording of you.</p>
+      <h4>What are the possible benefits for me or others?</h4>
+      <p>You may not directly benefit from participating in this study. However, the knowledge gained may help researchers better understand how people experience and remember audiovisual media.</p>
+      <h4>Will I receive compensation for my participation?</h4>
+      <p>Yes. Students who participate will receive <strong>0.5 research credit</strong> toward the APSY 101 (Introductory Psychology) course requirement.</p>
+      <h4>How will you protect the information you collect about me, and how will that information be shared?</h4>
+      <p>Your participation is confidential. No identifying information (such as your name or email address) will be collected.</p>
+      <p>All data will be stored securely in University at Albany OneDrive, accessible only to the research team. Data will be retained for a minimum of three (3) years and a maximum of five (5) years, after which it will be permanently destroyed.</p>
+      <p>Study results will be reported in aggregate (group-level) form in academic publications and presentations. Individual responses will not be linked to your identity.</p>
+      <h4>Will my data be used in future research?</h4>
+      <p>After removal of identifiers, your data may be used in future research studies or shared with other investigators without additional consent from you.</p>
+      <h4>What are my rights as a research participant?</h4>
+      <p>Your participation in this study is voluntary. You may skip any question you do not wish to answer, and you may withdraw at any time without penalty or loss of benefits. If you choose to withdraw, you may also request that your data not be used.</p>
+      <p>If you are a University at Albany student or employee, choosing not to participate will not affect your grades, class standing, employment, or your relationship with the University.</p>
+      <h4>Who can I contact if I have questions or concerns?</h4>
+      <p><strong>For questions about this study:</strong><br>
+      - Sijia (Estelle) Song – <a href="mailto:ssong@albany.edu">ssong@albany.edu</a><br>
+      - Dr. Ronald Friedman (Faculty Advisor) – <a href="mailto:rfriedman@albany.edu">rfriedman@albany.edu</a></p>
+      <p><strong>For questions about your rights as a research participant:</strong><br>
+      Institutional Review Board<br>
+      Office of Regulatory and Research Compliance<br>
+      University at Albany<br>
+      1400 Washington Ave, Biology 227<br>
+      Albany, NY 12222<br>
+      Phone: 1-866-857-5459<br>
+      Email: <a href="mailto:rco@albany.edu">rco@albany.edu</a></p>
+      <hr>
+      <p><em>Consent Statement:</em> I have read (or been informed of) the information above. By clicking “I Agree” below, I consent to participate in this study.</p>
+    </div>
+  `;
 
   const consentTrial = {
     type: jsPsychHtmlButtonResponse,
@@ -500,8 +461,8 @@ const CONSENT_HTML = `
       CONSENT_GIVEN = (data.response === 0);
     }
   };
-    /* ---------- Intro screens ---------- */
-    const introScreens = [
+
+  const introScreens = [
     screenTrial(`
       <h2 class="center">Welcome to the study!</h2>
       <p style="text-align:left;">
@@ -538,11 +499,55 @@ const CONSENT_HTML = `
     `, "Begin practice")
   ];
 
+  /* ==============================
+     Design 
+  ============================== */
+  const SCENES   = ["dog","horse","penguin","plane","car","roomba"];
+  const VERSIONS = [1,2,3];
+  const MOAS     = ["0s","1s","3s"]; // filename() maps "0s" -> "sync" if needed
+
+  // --------------- Main flow ---------------
+  (async () => {
+    // URL overrides for practice (optional)
+    const PRACTICE_VIDEO = getParam("pvid") || "videos/practice_v1.mp4";
+    const PRACTICE_SIDE  = (getParam("pside") || "left").toLowerCase() === "right" ? "right" : "left";
+
+    // Load CSV once
+    const rows = await loadCSV("logic.csv");
+
+    /* ---------- Practice ---------- */
+    const practiceQs = questionsFor(rows, "practice", "v1").sort((a,b) => Number(a.q) - Number(b.q));
+
+    const practiceTimeline = [
+      videoTrial(PRACTICE_VIDEO, { practice: true }),
+      prefSlider({ practice: true }),
+      simultaneitySlider({ practice: true })
+    ];
+
+    if (practiceQs.length === 0) {
+      practiceTimeline.push(
+        screenTrial(`<div class="center"><p><em>No practice questions found (scene "practice", version "v1").</em></p></div>`, "Continue")
+      );
+    } else {
+      practiceQs.forEach(q => {
+        practiceTimeline.push( questionTrial(q, PRACTICE_SIDE, { practice: true }) );
+      });
+    }
+
+    const practiceTrials = [
+      { scene: "practice1", direction: "LtoR", moa: "demo", stimulus: "videos/practice1_LtoR_demo.mp4" }
+    ];
+
+    const practiceCompleteScreen = screenTrial(`
+      <div class="center">
+        <h3>Practice complete!</h3>
+        <p>The main experiment will now begin.</p>
+      </div>`, "Start main task");
+
     /* ---------- Main trials (fully random per participant) ---------- */
-    // For each scene, randomly permute MOAs across versions; direction is sampled independently per trial.
     const trials = [];
     for (const scene of SCENES) {
-      const moasPerm = jsPsych.randomization.shuffle(MOAS.slice()); // random pairing per scene
+      const moasPerm = jsPsych.randomization.shuffle(MOAS.slice());
       for (let i = 0; i < VERSIONS.length; i++) {
         const v   = VERSIONS[i];
         const moa = moasPerm[i];
@@ -552,7 +557,6 @@ const CONSENT_HTML = `
       }
     }
 
-    // Randomize overall presentation order (18 trials)
     const shuffled = jsPsych.randomization.shuffle(trials);
 
     const mainTimeline = [
@@ -581,73 +585,44 @@ const CONSENT_HTML = `
       }
     }
 
-    mainTimeline.push(
-      screenTrial('<div class="center"><p>Thanks! You’re all set.</p></div>', "Finish")
-    );
+    const q_age     = oneTextQuestion({ name: "age",            prompt: "1) Please enter your age.",            placeholder: "e.g., 26; 52" });
+    const q_gender  = oneTextQuestion({ name: "gender",         prompt: "2) Please enter your gender.",         placeholder: "e.g., woman / man / nonbinary / prefer to self-describe" });
+    const q_race    = oneTextQuestion({ name: "race_ethnicity", prompt: "3) Please enter your race/ethnicity.", placeholder: "e.g., Asian; White; Black; Hispanic/Latino; Multiracial; …" });
+    const q_hearing = oneTextQuestion({ name: "hearing",        prompt: "4) Do you have normal hearing?",       placeholder: "Yes / No / Unsure" });
 
-    /* ---------- Final questions & Debrief ---------- */
-    const q_age = oneTextQuestion({ name: "age", prompt: "1) Please enter your age.", placeholder: "e.g., 26; 52" });
-    const q_gender = oneTextQuestion({ name: "gender", prompt: "2) Please enter your gender.", placeholder: "e.g., woman / man / nonbinary / prefer to self-describe" });
-    const q_race = oneTextQuestion({ name: "race_ethnicity", prompt: "3) Please enter your race/ethnicity.", placeholder: "e.g., Asian; White; Black; Hispanic/Latino; Multiracial; …" });
-    const q_hearing = oneTextQuestion({ name: "hearing", prompt: "4) Do you have normal hearing?", placeholder: "Yes / No / Unsure" });
+    const final_debrief = {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `
+        <div style="max-width:820px;margin:0 auto;line-height:1.5;text-align:left;">
+          <h2 class="center">Thank you for participating in this study!</h2>
+          <p><strong>What was this study about?</strong><br>
+          We’re studying how people remember short videos and how much they like them—especially when what you see and what you hear don’t line up perfectly. 
+          In everyday life, sights and sounds usually start together (for example, you see a car move and hear it at the same time). 
+          In our study, we sometimes made the sound’s movement start a little after the picture’s movement. 
+          This timing gap is called motion onset asynchrony (MOA).</p>
+          <p><strong>What did we test?</strong><br>
+          We used three setups: no delay, a small delay, and a larger delay. 
+          Our main idea is that a moderate delay might be “just right”—interesting enough to grab attention and help memory and liking, 
+          but not so off that it feels distracting. We’ll also test whether liking helps explain memory—in other words, 
+          whether clips you like more are also easier to remember when timing is a little off.</p>
+          <p><strong>Why does this matter?</strong><br>
+          Extended reality (XR) is used in training, education, games, and entertainment. Designers want experiences that people enjoy and also remember. 
+          Those goals don’t always match: very immersive experiences can feel amazing yet sometimes make it harder to remember details, 
+          while simpler setups can aid memory but feel less engaging. Our results can help find a better balance.</p>
+          <p>If you would like to discuss the study further or are curious about this research, 
+          please feel free to contact the researcher, <a href="mailto:ssong@albany.edu">Estelle Song</a>, 
+          or the faculty advisor, <a href="mailto:rfriedman@albany.edu">Dr. Ronald Friedman</a>. 
+          You may also contact either researcher if you would like your data withdrawn from the study. 
+          If you choose to do so, you will still receive full credit for participation and will not be penalized in any way.</p>
+          <p>If you experienced any discomfort during this study, or wish to discuss any other concerns, 
+          you may contact the University Counseling Center at (518) 442-5800.</p>
+          <p>Because this research is potentially important, we kindly ask that you please do not discuss the study with others before they participate. 
+          Prior knowledge could affect their natural responses.</p>
+          <p class="center"><strong>Thank you very much for your assistance with this project!</strong></p>
+        </div>`,
+      choices: ["Finish"]
+    };
 
-const final_debrief = {
-  type: jsPsychHtmlButtonResponse,
-  stimulus: `
-    <div style="max-width:820px;margin:0 auto;line-height:1.5;text-align:left;">
-      <h2 class="center">Thank you for participating in this study!</h2>
-
-      <p><strong>What was this study about?</strong><br>
-      We’re studying how people remember short videos and how much they like them—especially when what you see and what you hear don’t line up perfectly. 
-      In everyday life, sights and sounds usually start together (for example, you see a car move and hear it at the same time). 
-      In our study, we sometimes made the sound’s movement start a little after the picture’s movement. 
-      This timing gap is called motion onset asynchrony (MOA).</p>
-
-      <p><strong>What did we test?</strong><br>
-      We used three setups: no delay, a small delay, and a larger delay. 
-      Our main idea is that a moderate delay might be “just right”—interesting enough to grab attention and help memory and liking, 
-      but not so off that it feels distracting. We’ll also test whether liking helps explain memory—in other words, 
-      whether clips you like more are also easier to remember when timing is a little off.</p>
-
-      <p><strong>Why does this matter?</strong><br>
-      Extended reality (XR) is used in training, education, games, and entertainment. Designers want experiences that people enjoy and also remember. 
-      Those goals don’t always match: very immersive experiences can feel amazing yet sometimes make it harder to remember details, 
-      while simpler setups can aid memory but feel less engaging. Our results can help find a better balance.</p>
-
-      <p>If you would like to discuss the study further or are curious about this research, 
-      please feel free to contact the researcher, <a href="mailto:ssong@albany.edu">Estelle Song</a>, 
-      or the faculty advisor, <a href="mailto:rfriedman@albany.edu">Dr. Ronald Friedman</a>. 
-      You may also contact either researcher if you would like your data withdrawn from the study. 
-      If you choose to do so, you will still receive full credit for participation and will not be penalized in any way.</p>
-
-      <p>If you experienced any discomfort during this study, or wish to discuss any other concerns, 
-      you may contact the University Counseling Center at (518) 442-5800.</p>
-
-      <p>Because this research is potentially important, we kindly ask that you please do not discuss the study with others before they participate. 
-      Prior knowledge could affect their natural responses.</p>
-
-      <p class="center"><strong>Thank you very much for your assistance with this project!</strong></p>
-    </div>`,
-  choices: ["Finish"]
-};
-
-const credit_section = {
-  type: jsPsychHtmlButtonResponse,
-  stimulus: `
-    <div style="max-width:820px;margin:0 auto;line-height:1.5;text-align:left;">
-      <h2 class="center">Research Credit Instructions</h2>
-      <p>
-        At the conclusion of this study, a <strong>unique completion code</strong> will be displayed on your screen. 
-        Please record this code carefully and email it to 
-        <a href="mailto:friedmanlab11@gmail.com">friedmanlab11@gmail.com</a> 
-        to receive research credit.
-      </p>
-      <p><em>For confidentiality:</em> please include <strong>only</strong> the completion code in your email; 
-      do not include your name, student ID, or any other personal information.</p>
-    </div>`,
-  choices: ["Finish"]
-};
-    
     /* ---------- Run ---------- */
     jsPsych.run([
       consentTrial,
@@ -656,11 +631,12 @@ const credit_section = {
       practiceCompleteScreen,
       ...mainTimeline,
       q_age, q_gender, q_race, q_hearing,
-      final_debrief,
-      credit_section
+      final_debrief
     ]);
+  })(); // 
 </script>
 </body>
 </html>
+
 
 
